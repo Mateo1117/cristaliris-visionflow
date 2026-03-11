@@ -164,6 +164,19 @@ export function OrderListView() {
             <SelectItem value="insumo">Insumo</SelectItem>
           </SelectContent>
         </Select>
+        <Button variant="outline" size="sm" onClick={() => exportToCSV(filtered, 'ordenes', [
+          { key: 'fecha_creacion', label: 'Fecha' },
+          { key: 'paciente_nombre', label: 'Paciente' },
+          { key: 'descripcion', label: 'Producto' },
+          { key: 'tipo_producto', label: 'Tipo' },
+          { key: 'laboratorio_nombre', label: 'Laboratorio' },
+          { key: 'estado_actual', label: 'Estado' },
+          { key: 'dias_en_estado', label: 'Días' },
+          { key: 'precio_venta', label: 'Precio Venta' },
+          { key: 'utilidad_calculada', label: 'Utilidad' },
+        ])}>
+          <Download className="h-3.5 w-3.5 mr-1" />Exportar
+        </Button>
       </div>
 
       {/* Table */}

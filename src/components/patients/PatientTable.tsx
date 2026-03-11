@@ -1,19 +1,25 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { mockPacientes } from '@/lib/mock-data';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface PatientTableProps {
   searchQuery: string;
+  pacientes: any[];
+  isLoading: boolean;
 }
 
-export function PatientTable({ searchQuery }: PatientTableProps) {
+export function PatientTable({ searchQuery, pacientes, isLoading }: PatientTableProps) {
   const q = searchQuery.toLowerCase();
-  const filtered = mockPacientes.filter((p) =>
-    p.numero_documento.includes(q) ||
+  const filtered = pacientes.filter((p: any) =>
+    p.numero_documento?.includes(q) ||
     `${p.nombres} ${p.apellidos}`.toLowerCase().includes(q) ||
-    p.telefono.includes(q)
+    p.telefono?.includes(q)
   );
+
+  if (isLoading) {
+    return <Card className="p-4 space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</Card>;
+  }
 
   return (
     <Card>
@@ -29,13 +35,13 @@ export function PatientTable({ searchQuery }: PatientTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map((p) => (
+          {filtered.map((p: any) => (
             <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50">
               <TableCell className="font-medium">{p.tipo_documento} {p.numero_documento}</TableCell>
               <TableCell>{p.nombres} {p.apellidos}</TableCell>
               <TableCell className="hidden md:table-cell">{p.telefono}</TableCell>
               <TableCell className="hidden lg:table-cell">{p.ciudad}</TableCell>
-              <TableCell className="hidden lg:table-cell">{p.sede_registro}</TableCell>
+              <TableCell className="hidden lg:table-cell">{p.sedes?.nombre ?? '—'}</TableCell>
               <TableCell>
                 <Badge variant={p.modalidad_pago === 'nomina' ? 'secondary' : 'outline'}>
                   {p.modalidad_pago === 'nomina' ? 'Nómina' : 'Contado'}

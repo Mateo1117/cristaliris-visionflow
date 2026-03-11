@@ -3,23 +3,39 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useState } from 'react';
 
 interface PatientFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSubmit: (data: Record<string, any>) => void;
+  isPending?: boolean;
 }
 
-export function PatientForm({ open, onOpenChange }: PatientFormProps) {
+export function PatientForm({ open, onOpenChange, onSubmit, isPending }: PatientFormProps) {
+  const [tipoDoc, setTipoDoc] = useState('CC');
+  const [genero, setGenero] = useState('');
+  const [modalidad, setModalidad] = useState('contado');
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const data: Record<string, any> = {};
+    fd.forEach((v, k) => { data[k] = v; });
+    data.tipo_documento = tipoDoc;
+    data.genero = genero || null;
+    data.modalidad_pago = modalidad;
+    onSubmit(data);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Nuevo Paciente</DialogTitle>
-        </DialogHeader>
-        <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={(e) => { e.preventDefault(); onOpenChange(false); }}>
+        <DialogHeader><DialogTitle>Nuevo Paciente</DialogTitle></DialogHeader>
+        <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <Label>Tipo Documento</Label>
-            <Select defaultValue="CC">
+            <Select value={tipoDoc} onValueChange={setTipoDoc}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="CC">Cédula de Ciudadanía</SelectItem>
@@ -29,25 +45,13 @@ export function PatientForm({ open, onOpenChange }: PatientFormProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Número de Documento</Label>
-            <Input placeholder="Ingrese número" />
-          </div>
-          <div className="space-y-2">
-            <Label>Nombres</Label>
-            <Input placeholder="Nombres" />
-          </div>
-          <div className="space-y-2">
-            <Label>Apellidos</Label>
-            <Input placeholder="Apellidos" />
-          </div>
-          <div className="space-y-2">
-            <Label>Fecha de Nacimiento</Label>
-            <Input type="date" />
-          </div>
+          <div className="space-y-2"><Label>Número de Documento</Label><Input name="numero_documento" placeholder="Ingrese número" required /></div>
+          <div className="space-y-2"><Label>Nombres</Label><Input name="nombres" placeholder="Nombres" required /></div>
+          <div className="space-y-2"><Label>Apellidos</Label><Input name="apellidos" placeholder="Apellidos" required /></div>
+          <div className="space-y-2"><Label>Fecha de Nacimiento</Label><Input name="fecha_nacimiento" type="date" /></div>
           <div className="space-y-2">
             <Label>Género</Label>
-            <Select>
+            <Select value={genero} onValueChange={setGenero}>
               <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="M">Masculino</SelectItem>
@@ -56,29 +60,14 @@ export function PatientForm({ open, onOpenChange }: PatientFormProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Teléfono</Label>
-            <Input placeholder="3XX XXX XXXX" />
-          </div>
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <Input type="email" placeholder="email@ejemplo.com" />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Dirección</Label>
-            <Input placeholder="Dirección completa" />
-          </div>
-          <div className="space-y-2">
-            <Label>Ciudad</Label>
-            <Input placeholder="Ciudad" defaultValue="Bogotá" />
-          </div>
-          <div className="space-y-2">
-            <Label>Departamento</Label>
-            <Input placeholder="Departamento" defaultValue="Cundinamarca" />
-          </div>
+          <div className="space-y-2"><Label>Teléfono</Label><Input name="telefono" placeholder="3XX XXX XXXX" /></div>
+          <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" placeholder="email@ejemplo.com" /></div>
+          <div className="space-y-2 md:col-span-2"><Label>Dirección</Label><Input name="direccion" placeholder="Dirección completa" /></div>
+          <div className="space-y-2"><Label>Ciudad</Label><Input name="ciudad" placeholder="Ciudad" defaultValue="Bogotá" /></div>
+          <div className="space-y-2"><Label>Departamento</Label><Input name="departamento" placeholder="Departamento" defaultValue="Cundinamarca" /></div>
           <div className="space-y-2">
             <Label>Modalidad de Pago</Label>
-            <Select defaultValue="contado">
+            <Select value={modalidad} onValueChange={setModalidad}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="contado">Contado</SelectItem>
@@ -86,19 +75,9 @@ export function PatientForm({ open, onOpenChange }: PatientFormProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Sede</Label>
-            <Select defaultValue="norte">
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="norte">Sede Norte</SelectItem>
-                <SelectItem value="sur">Sede Sur</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <div className="md:col-span-2 flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button type="submit">Guardar Paciente</Button>
+            <Button type="submit" disabled={isPending}>{isPending ? 'Guardando...' : 'Guardar Paciente'}</Button>
           </div>
         </form>
       </DialogContent>

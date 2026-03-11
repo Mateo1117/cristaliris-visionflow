@@ -46,6 +46,7 @@ const App = () => (
           <Route path="/scan" element={<ProtectedRoute><ScanQR /></ProtectedRoute>} />
           <Route path="/usuarios" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/control-calidad" element={<ProtectedRoute><QualityControl /></ProtectedRoute>} />
+          <Route path="/api-docs" element={<ProtectedRoute><ApiDocs /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

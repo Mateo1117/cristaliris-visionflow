@@ -30,6 +30,7 @@ const operacionItems = [
 const configItems = [
   { title: 'Usuarios', url: '/usuarios', icon: UserCog },
   { title: 'Configuración', url: '/configuracion', icon: Settings },
+  { title: 'API Docs', url: '/api-docs', icon: FileText },
 ];
 
 export function AppSidebar() {

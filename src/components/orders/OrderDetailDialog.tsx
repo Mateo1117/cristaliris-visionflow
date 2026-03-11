@@ -233,6 +233,16 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                       <span className="text-muted-foreground">{h.estado_anterior || '—'}</span>
                       <span className="mx-1">→</span>
                       <span className="font-medium">{h.estado_nuevo}</span>
+                      {h.usuario_nombre && (
+                        <div className="text-foreground mt-0.5">
+                          👤 {h.usuario_nombre}
+                        </div>
+                      )}
+                      {h.justificacion && (
+                        <div className="text-muted-foreground mt-0.5 italic">
+                          💬 {h.justificacion}
+                        </div>
+                      )}
                       <div className="text-muted-foreground mt-0.5">
                         {new Date(h.fecha_cambio).toLocaleString('es-CO')} · {h.metodo}
                       </div>

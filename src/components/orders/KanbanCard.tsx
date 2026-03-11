@@ -14,8 +14,18 @@ export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: ()
   const timeColor = getTimeColor(item.dias_en_estado, item.tiempo_esperado_dias);
   const excedido = item.dias_en_estado >= item.tiempo_esperado_dias;
 
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('application/json', JSON.stringify({ id: item.id, estado_actual: item.estado_actual }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
   return (
-    <Card className={`cursor-pointer hover:shadow-md transition-shadow ${excedido ? 'border-destructive/50 bg-destructive/5' : ''}`} onClick={onClick}>
+    <Card
+      draggable
+      onDragStart={handleDragStart}
+      className={`cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${excedido ? 'border-destructive/50 bg-destructive/5' : ''}`}
+      onClick={onClick}
+    >
       <CardContent className="p-3">
         <div className="flex items-start justify-between mb-1">
           <p className="text-sm font-medium leading-tight">{item.paciente_nombre}</p>

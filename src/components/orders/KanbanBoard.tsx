@@ -3,12 +3,14 @@ import { ESTADOS_PRODUCTO } from '@/types';
 import { KanbanColumn } from './KanbanColumn';
 import { OrderDetailDialog } from './OrderDetailDialog';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import type { OrdenProducto } from '@/types';
+import type { EstadoProducto, OrdenProducto } from '@/types';
+import { toast } from 'sonner';
 
 export function KanbanBoard() {
   const [selectedItem, setSelectedItem] = useState<OrdenProducto | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: productos = [], isLoading } = useQuery({
     queryKey: ['orden-productos'],
@@ -35,6 +37,33 @@ export function KanbanBoard() {
     },
   });
 
+  const moveItem = useMutation({
+    mutationFn: async ({ id, oldState, newState }: { id: string; oldState: string; newState: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: e1 } = await supabase.from('orden_productos')
+        .update({ estado_actual: newState as any })
+        .eq('id', id);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase.from('estados_producto').insert({
+        orden_producto_id: id,
+        estado_anterior: oldState as any,
+        estado_nuevo: newState as any,
+        metodo: 'manual',
+        usuario_id: user?.id || null,
+      });
+      if (e2) throw e2;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      toast.success('Estado actualizado');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const handleDrop = (itemId: string, oldState: string, newState: EstadoProducto) => {
+    moveItem.mutate({ id: itemId, oldState, newState });
+  };
+
   if (isLoading) {
     return <div className="text-center py-12 text-muted-foreground">Cargando tablero...</div>;
   }
@@ -45,7 +74,16 @@ export function KanbanBoard() {
         <div className="flex gap-3 pb-4" style={{ minWidth: `${ESTADOS_PRODUCTO.length * 260}px` }}>
           {ESTADOS_PRODUCTO.map(({ key, label }) => {
             const items = productos.filter((p: any) => p.estado_actual === key);
-            return <KanbanColumn key={key} estado={key} label={label} items={items} onCardClick={setSelectedItem} />;
+            return (
+              <KanbanColumn
+                key={key}
+                estado={key}
+                label={label}
+                items={items}
+                onCardClick={setSelectedItem}
+                onDrop={handleDrop}
+              />
+            );
           })}
         </div>
         <ScrollBar orientation="horizontal" />

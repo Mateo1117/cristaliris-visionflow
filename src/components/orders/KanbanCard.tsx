@@ -10,12 +10,12 @@ function getTimeColor(dias: number, esperado: number) {
   return 'text-success';
 }
 
-export function KanbanCard({ item }: { item: OrdenProducto }) {
+export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: () => void }) {
   const timeColor = getTimeColor(item.dias_en_estado, item.tiempo_esperado_dias);
   const excedido = item.dias_en_estado >= item.tiempo_esperado_dias;
 
   return (
-    <Card className="cursor-pointer hover:shadow-md transition-shadow">
+    <Card className={`cursor-pointer hover:shadow-md transition-shadow ${excedido ? 'border-destructive/50 bg-destructive/5' : ''}`} onClick={onClick}>
       <CardContent className="p-3">
         <div className="flex items-start justify-between mb-1">
           <p className="text-sm font-medium leading-tight">{item.paciente_nombre}</p>

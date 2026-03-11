@@ -17,6 +17,7 @@ import Billing from "./pages/Billing";
 import Warranties from "./pages/Warranties";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/Settings";
+import ScanQR from "./pages/ScanQR";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/garantias" element={<ProtectedRoute><Warranties /></ProtectedRoute>} />
           <Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/scan" element={<ProtectedRoute><ScanQR /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

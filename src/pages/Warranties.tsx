@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search } from 'lucide-react';
 
 const estadoColor: Record<string, string> = {
@@ -19,6 +20,7 @@ const estadoColor: Record<string, string> = {
 
 export default function Warranties() {
   const [search, setSearch] = useState('');
+  const [origen, setOrigen] = useState<'todas' | 'calidad' | 'cliente'>('todas');
 
   const { data: garantias = [], isLoading } = useQuery({
     queryKey: ['garantias'],
@@ -33,6 +35,10 @@ export default function Warranties() {
   });
 
   const filtered = garantias.filter((g: any) => {
+    // Filter by origin
+    if (origen === 'calidad' && !g.observaciones?.toLowerCase().includes('rechazado en control de calidad')) return false;
+    if (origen === 'cliente' && g.observaciones?.toLowerCase().includes('rechazado en control de calidad')) return false;
+
     if (!search) return true;
     const q = search.toLowerCase();
     const paciente = g.orden_productos?.ordenes?.pacientes;
@@ -44,13 +50,25 @@ export default function Warranties() {
     );
   });
 
+  const countCalidad = garantias.filter((g: any) => g.observaciones?.toLowerCase().includes('rechazado en control de calidad')).length;
+  const countCliente = garantias.length - countCalidad;
+
   return (
     <AppLayout>
       <PageHeader title="Garantías" description="Protocolo de adaptación y gestión de garantías" />
 
-      <div className="relative mb-4 max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar por subcódigo, paciente o motivo..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="relative max-w-md flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Buscar por subcódigo, paciente o motivo..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+        </div>
+        <Tabs value={origen} onValueChange={(v) => setOrigen(v as any)}>
+          <TabsList>
+            <TabsTrigger value="todas">Todas ({garantias.length})</TabsTrigger>
+            <TabsTrigger value="calidad">Rechazo Calidad ({countCalidad})</TabsTrigger>
+            <TabsTrigger value="cliente">Solicitud Cliente ({countCliente})</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       <Card>
@@ -62,6 +80,7 @@ export default function Warranties() {
               <TableHead>Producto</TableHead>
               <TableHead className="hidden md:table-cell">Motivo</TableHead>
               <TableHead>Ciclo</TableHead>
+              <TableHead>Origen</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="hidden md:table-cell">Laboratorio</TableHead>
               <TableHead className="hidden lg:table-cell">Fecha</TableHead>
@@ -69,9 +88,9 @@ export default function Warranties() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hay garantías{search ? ' que coincidan' : ''}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No hay garantías{search ? ' que coincidan' : ''}</TableCell></TableRow>
             ) : filtered.map((g: any) => {
               const paciente = g.orden_productos?.ordenes?.pacientes;
               return (
@@ -81,6 +100,11 @@ export default function Warranties() {
                   <TableCell className="text-sm">{g.orden_productos?.descripcion || '—'}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground truncate max-w-[200px]">{g.motivo}</TableCell>
                   <TableCell><Badge variant="outline" className="text-[10px]">G{g.ciclo}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`text-[10px] ${g.observaciones?.toLowerCase().includes('rechazado en control de calidad') ? 'border-destructive/30 text-destructive' : 'border-primary/30 text-primary'}`}>
+                      {g.observaciones?.toLowerCase().includes('rechazado en control de calidad') ? 'Calidad' : 'Cliente'}
+                    </Badge>
+                  </TableCell>
                   <TableCell><Badge className={`text-[10px] ${estadoColor[g.estado] || ''}`}>{g.estado}</Badge></TableCell>
                   <TableCell className="hidden md:table-cell text-sm">{g.laboratorios?.nombre || '—'}</TableCell>
                   <TableCell className="hidden lg:table-cell text-sm">{new Date(g.fecha_solicitud).toLocaleDateString('es-CO')}</TableCell>

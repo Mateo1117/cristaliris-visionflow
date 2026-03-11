@@ -100,6 +100,11 @@ export default function Warranties() {
                   <TableCell className="text-sm">{g.orden_productos?.descripcion || '—'}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground truncate max-w-[200px]">{g.motivo}</TableCell>
                   <TableCell><Badge variant="outline" className="text-[10px]">G{g.ciclo}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`text-[10px] ${g.observaciones?.toLowerCase().includes('rechazado en control de calidad') ? 'border-destructive/30 text-destructive' : 'border-primary/30 text-primary'}`}>
+                      {g.observaciones?.toLowerCase().includes('rechazado en control de calidad') ? 'Calidad' : 'Cliente'}
+                    </Badge>
+                  </TableCell>
                   <TableCell><Badge className={`text-[10px] ${estadoColor[g.estado] || ''}`}>{g.estado}</Badge></TableCell>
                   <TableCell className="hidden md:table-cell text-sm">{g.laboratorios?.nombre || '—'}</TableCell>
                   <TableCell className="hidden lg:table-cell text-sm">{new Date(g.fecha_solicitud).toLocaleDateString('es-CO')}</TableCell>

@@ -20,6 +20,7 @@ const estadoColor: Record<string, string> = {
 
 export default function Warranties() {
   const [search, setSearch] = useState('');
+  const [origen, setOrigen] = useState<'todas' | 'calidad' | 'cliente'>('todas');
 
   const { data: garantias = [], isLoading } = useQuery({
     queryKey: ['garantias'],

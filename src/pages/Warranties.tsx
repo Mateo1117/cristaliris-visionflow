@@ -2,13 +2,19 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search } from 'lucide-react';
+import { Search, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const estadoColor: Record<string, string> = {
   solicitada: 'bg-warning/10 text-warning',
@@ -21,6 +27,10 @@ const estadoColor: Record<string, string> = {
 export default function Warranties() {
   const [search, setSearch] = useState('');
   const [origen, setOrigen] = useState<'todas' | 'calidad' | 'cliente'>('todas');
+  const [showForm, setShowForm] = useState(false);
+  const [selectedProducto, setSelectedProducto] = useState('');
+  const [selectedLab, setSelectedLab] = useState('');
+  const queryClient = useQueryClient();
 
   const { data: garantias = [], isLoading } = useQuery({
     queryKey: ['garantias'],
@@ -34,11 +44,84 @@ export default function Warranties() {
     },
   });
 
+  const { data: productos = [] } = useQuery({
+    queryKey: ['orden-productos-garantia'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orden_productos')
+        .select('id, descripcion, tipo_producto, orden_id, ordenes(pacientes(nombres, apellidos))')
+        .neq('estado_actual', 'entregado')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: labs = [] } = useQuery({
+    queryKey: ['laboratorios-garantia'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('laboratorios').select('id, nombre').eq('estado_activo', true);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const createGarantia = useMutation({
+    mutationFn: async (formData: Record<string, any>) => {
+      // Count existing garantias for this product to determine ciclo
+      const { count } = await supabase
+        .from('garantias')
+        .select('id', { count: 'exact', head: true })
+        .eq('orden_producto_id', formData.orden_producto_id);
+
+      const ciclo = (count || 0) + 1;
+      const subcodigo = `G${ciclo}-${formData.orden_producto_id.slice(0, 8).toUpperCase()}`;
+
+      const { error } = await supabase.from('garantias').insert({
+        orden_producto_id: formData.orden_producto_id,
+        laboratorio_id: formData.laboratorio_id || null,
+        motivo: formData.motivo,
+        observaciones: formData.observaciones || null,
+        ciclo,
+        subcodigo,
+        envio_asumido_por: formData.envio_asumido_por || null,
+        guia_envio: formData.guia_envio || null,
+      });
+      if (error) throw error;
+
+      // Reset product state to pedido_creado
+      await supabase.from('orden_productos').update({
+        estado_actual: 'pedido_creado' as any,
+        es_garantia: true,
+        ciclo_garantia: ciclo,
+        garantia_codigo: subcodigo,
+      }).eq('id', formData.orden_producto_id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['garantias'] });
+      queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      queryClient.invalidateQueries({ queryKey: ['orden-productos-garantia'] });
+      setShowForm(false);
+      setSelectedProducto('');
+      setSelectedLab('');
+      toast.success('Garantía creada exitosamente');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedProducto) { toast.error('Seleccione un producto'); return; }
+    const fd = new FormData(e.currentTarget);
+    const data: Record<string, any> = { orden_producto_id: selectedProducto };
+    fd.forEach((v, k) => { data[k] = v; });
+    data.laboratorio_id = selectedLab || null;
+    createGarantia.mutate(data);
+  };
+
   const filtered = garantias.filter((g: any) => {
-    // Filter by origin
     if (origen === 'calidad' && !g.observaciones?.toLowerCase().includes('rechazado en control de calidad')) return false;
     if (origen === 'cliente' && g.observaciones?.toLowerCase().includes('rechazado en control de calidad')) return false;
-
     if (!search) return true;
     const q = search.toLowerCase();
     const paciente = g.orden_productos?.ordenes?.pacientes;
@@ -53,9 +136,13 @@ export default function Warranties() {
   const countCalidad = garantias.filter((g: any) => g.observaciones?.toLowerCase().includes('rechazado en control de calidad')).length;
   const countCliente = garantias.length - countCalidad;
 
+  const selectedProd = productos.find((p: any) => p.id === selectedProducto);
+
   return (
     <AppLayout>
-      <PageHeader title="Garantías" description="Protocolo de adaptación y gestión de garantías" />
+      <PageHeader title="Garantías" description="Protocolo de adaptación y gestión de garantías">
+        <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nueva Garantía</Button>
+      </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative max-w-md flex-1">
@@ -114,6 +201,81 @@ export default function Warranties() {
           </TableBody>
         </Table>
       </Card>
+
+      {/* Create Warranty Dialog */}
+      <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) { setSelectedProducto(''); setSelectedLab(''); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Nueva Garantía</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Producto de Orden *</Label>
+              <Select value={selectedProducto} onValueChange={setSelectedProducto}>
+                <SelectTrigger><SelectValue placeholder="Seleccione producto" /></SelectTrigger>
+                <SelectContent>
+                  {productos.map((p: any) => {
+                    const pac = p.ordenes?.pacientes;
+                    return (
+                      <SelectItem key={p.id} value={p.id}>
+                        {pac?.nombres} {pac?.apellidos} — {p.descripcion}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {selectedProd && (
+                <div className="bg-muted/50 rounded-md p-2 text-xs space-y-1">
+                  <p><span className="text-muted-foreground">Paciente:</span> <strong>{(selectedProd as any).ordenes?.pacientes?.nombres} {(selectedProd as any).ordenes?.pacientes?.apellidos}</strong></p>
+                  <p><span className="text-muted-foreground">Producto:</span> {selectedProd.descripcion}</p>
+                  <p><span className="text-muted-foreground">Tipo:</span> <Badge variant="outline" className="text-[10px]">{selectedProd.tipo_producto}</Badge></p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Motivo de la Garantía *</Label>
+              <Textarea name="motivo" required placeholder="Describe el motivo de la garantía..." rows={3} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Laboratorio</Label>
+              <Select value={selectedLab} onValueChange={setSelectedLab}>
+                <SelectTrigger><SelectValue placeholder="Seleccione laboratorio" /></SelectTrigger>
+                <SelectContent>
+                  {labs.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.nombre}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Envío asumido por</Label>
+                <Select name="envio_asumido_por">
+                  <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="optica">Óptica</SelectItem>
+                    <SelectItem value="laboratorio">Laboratorio</SelectItem>
+                    <SelectItem value="paciente">Paciente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Guía de Envío</Label>
+                <Input name="guia_envio" placeholder="No. guía" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observaciones</Label>
+              <Textarea name="observaciones" placeholder="Observaciones adicionales..." rows={2} />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+              <Button type="submit" disabled={createGarantia.isPending}>{createGarantia.isPending ? 'Creando...' : 'Crear Garantía'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

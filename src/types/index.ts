@@ -106,6 +106,13 @@ export interface OrdenProducto {
   tiempo_esperado_dias: number;
   es_garantia: boolean;
   es_reproceso: boolean;
+  precio_venta: number;
+  costo_laboratorio: number;
+  costo_montura: number;
+  costo_lente: number;
+  costo_insumos: number;
+  comision_financiera: number;
+  utilidad_calculada: number;
 }
 
 export interface Orden {

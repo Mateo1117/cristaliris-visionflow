@@ -21,6 +21,7 @@ import ScanQR from "./pages/ScanQR";
 import UsersPage from "./pages/Users";
 import QualityControl from "./pages/QualityControl";
 import ApiDocs from "./pages/ApiDocs";
+import Cotizaciones from "./pages/Cotizaciones";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/historia-clinica" element={<ProtectedRoute><ClinicalRecords /></ProtectedRoute>} />
           <Route path="/inventario" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
           <Route path="/cartera" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
+          <Route path="/cotizaciones" element={<ProtectedRoute><Cotizaciones /></ProtectedRoute>} />
           <Route path="/garantias" element={<ProtectedRoute><Warranties /></ProtectedRoute>} />
           <Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />

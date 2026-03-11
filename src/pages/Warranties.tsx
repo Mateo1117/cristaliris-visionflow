@@ -88,9 +88,9 @@ export default function Warranties() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hay garantías{search ? ' que coincidan' : ''}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No hay garantías{search ? ' que coincidan' : ''}</TableCell></TableRow>
             ) : filtered.map((g: any) => {
               const paciente = g.orden_productos?.ordenes?.pacientes;
               return (

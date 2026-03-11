@@ -4,11 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ESTADOS_PRODUCTO } from '@/types';
 import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { QrCode, ChevronRight, RotateCcw, CheckCircle2, Loader2 } from 'lucide-react';
+import { QrCode, ChevronRight, RotateCcw, CheckCircle2, Loader2, Search } from 'lucide-react';
 
 interface ScannedProduct {
   id: string;
@@ -24,13 +26,18 @@ export default function ScanQR() {
   const [product, setProduct] = useState<ScannedProduct | null>(null);
   const [updating, setUpdating] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [manualId, setManualId] = useState('');
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const readerRef = useRef<HTMLDivElement>(null);
 
+  // Always render the qr-reader div, just hide it when not scanning
   const startScan = async () => {
     setProduct(null);
     setSuccess(false);
     setScanning(true);
+
+    // Wait for next frame so the div is visible
+    await new Promise(r => setTimeout(r, 100));
+
     try {
       const scanner = new Html5Qrcode('qr-reader');
       scannerRef.current = scanner;
@@ -38,21 +45,20 @@ export default function ScanQR() {
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         async (text) => {
-          await scanner.stop();
+          try { await scanner.stop(); } catch {}
           scannerRef.current = null;
           setScanning(false);
-          // Extract ID from URL or use as-is
           let productId = text;
           try {
             const url = new URL(text);
             productId = url.searchParams.get('id') || text;
-          } catch { /* not a URL, use text as ID */ }
+          } catch { /* not a URL */ }
           await fetchProduct(productId);
         },
         () => {},
       );
     } catch (err: any) {
-      const msg = typeof err === 'string' ? err : err?.message || 'No se pudo acceder a la cámara. Verifique los permisos.';
+      const msg = typeof err === 'string' ? err : err?.message || 'No se pudo acceder a la cámara. Verifique los permisos del navegador.';
       toast.error(msg);
       setScanning(false);
     }
@@ -88,6 +94,13 @@ export default function ScanQR() {
       paciente_nombre: `${(data as any).ordenes?.pacientes?.nombres || ''} ${(data as any).ordenes?.pacientes?.apellidos || ''}`.trim(),
       laboratorio_nombre: (data as any).laboratorios?.nombre || 'N/A',
     });
+  };
+
+  const handleManualSearch = async () => {
+    const id = manualId.trim();
+    if (!id) return;
+    await fetchProduct(id);
+    setManualId('');
   };
 
   const getNextState = () => {
@@ -129,17 +142,36 @@ export default function ScanQR() {
       <PageHeader title="Escanear QR" description="Escanee el QR de una orden para actualizar su estado" />
 
       <div className="max-w-md mx-auto space-y-4">
+        {/* QR reader div - always in DOM, hidden when not scanning */}
+        <div id="qr-reader" className={scanning ? 'rounded-lg overflow-hidden' : 'hidden'} />
+
         {!scanning && !product && (
-          <Button onClick={startScan} className="w-full" size="lg">
-            <QrCode className="h-5 w-5 mr-2" />Iniciar Escáner
-          </Button>
+          <>
+            <Button onClick={startScan} className="w-full" size="lg">
+              <QrCode className="h-5 w-5 mr-2" />Iniciar Escáner
+            </Button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">o buscar por ID</span></div>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={manualId}
+                onChange={(e) => setManualId(e.target.value)}
+                placeholder="Pegar ID del producto"
+                onKeyDown={(e) => e.key === 'Enter' && handleManualSearch()}
+              />
+              <Button onClick={handleManualSearch} variant="outline" size="icon">
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
         )}
 
         {scanning && (
-          <div className="space-y-2">
-            <div id="qr-reader" ref={readerRef} className="rounded-lg overflow-hidden" />
-            <Button onClick={stopScan} variant="outline" className="w-full">Cancelar</Button>
-          </div>
+          <Button onClick={stopScan} variant="outline" className="w-full">Cancelar</Button>
         )}
 
         {product && (

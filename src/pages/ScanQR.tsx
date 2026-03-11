@@ -201,6 +201,19 @@ export default function ScanQR() {
       const { error: e1 } = await supabase.from('inventario').update({ cantidad_disponible: newQty }).eq('id', invItem.id);
       if (e1) throw e1;
 
+      // Log movement
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('movimientos_inventario').insert({
+        inventario_id: invItem.id,
+        tipo_movimiento: 'salida',
+        cantidad: Math.abs(pendingDelta),
+        cantidad_anterior: invItem.cantidad_disponible,
+        cantidad_nueva: newQty,
+        motivo: selectedProductoId ? 'Vinculado a orden via QR' : 'Descuento via QR',
+        orden_producto_id: selectedProductoId || null,
+        usuario_id: user?.id || null,
+      });
+
       // Link to order product if selected
       if (selectedProductoId) {
         const { error: e2 } = await supabase.from('orden_productos')

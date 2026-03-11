@@ -1,0 +1,2 @@
+ALTER TABLE public.estados_producto DROP CONSTRAINT estados_producto_metodo_check;
+ALTER TABLE public.estados_producto ADD CONSTRAINT estados_producto_metodo_check CHECK (metodo = ANY (ARRAY['qr_scan'::text, 'manual'::text, 'admin_retroceso'::text, 'control_calidad'::text]));

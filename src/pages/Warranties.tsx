@@ -35,6 +35,10 @@ export default function Warranties() {
   });
 
   const filtered = garantias.filter((g: any) => {
+    // Filter by origin
+    if (origen === 'calidad' && !g.observaciones?.toLowerCase().includes('rechazado en control de calidad')) return false;
+    if (origen === 'cliente' && g.observaciones?.toLowerCase().includes('rechazado en control de calidad')) return false;
+
     if (!search) return true;
     const q = search.toLowerCase();
     const paciente = g.orden_productos?.ordenes?.pacientes;
@@ -45,6 +49,9 @@ export default function Warranties() {
       paciente?.apellidos?.toLowerCase().includes(q)
     );
   });
+
+  const countCalidad = garantias.filter((g: any) => g.observaciones?.toLowerCase().includes('rechazado en control de calidad')).length;
+  const countCliente = garantias.length - countCalidad;
 
   return (
     <AppLayout>

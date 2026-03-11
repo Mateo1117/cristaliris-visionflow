@@ -80,6 +80,7 @@ export default function Warranties() {
               <TableHead>Producto</TableHead>
               <TableHead className="hidden md:table-cell">Motivo</TableHead>
               <TableHead>Ciclo</TableHead>
+              <TableHead>Origen</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="hidden md:table-cell">Laboratorio</TableHead>
               <TableHead className="hidden lg:table-cell">Fecha</TableHead>

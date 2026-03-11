@@ -433,9 +433,10 @@ export default function ScanQR() {
                       <ShoppingCart className="h-3 w-3" />Vinculado a orden
                     </Badge>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap justify-center">
                     <Button onClick={() => { setSuccess(false); setInvStep('view'); setSelectedProductoId(''); }} variant="outline" size="sm">Ajustar más</Button>
                     <Button onClick={resetAll} variant="outline" size="sm"><RotateCcw className="h-4 w-4 mr-1" />Escanear Otro</Button>
+                    <Button onClick={resetAll} size="sm"><CheckCircle2 className="h-4 w-4 mr-1" />Finalizar</Button>
                   </div>
                 </div>
               )}

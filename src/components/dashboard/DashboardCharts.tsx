@@ -1,10 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ESTADOS_PRODUCTO } from '@/types';
-import { subMonths, format, startOfMonth } from 'date-fns';
+import { subMonths, subWeeks, format, startOfMonth, startOfWeek, endOfWeek, addWeeks } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const COLORS = ['hsl(210,80%,45%)', 'hsl(170,55%,42%)', 'hsl(260,60%,55%)', 'hsl(38,92%,50%)', 'hsl(0,72%,51%)', 'hsl(190,70%,50%)', 'hsl(320,60%,50%)', 'hsl(150,60%,40%)', 'hsl(30,80%,55%)', 'hsl(270,50%,60%)'];
@@ -12,7 +12,6 @@ const COLORS = ['hsl(210,80%,45%)', 'hsl(170,55%,42%)', 'hsl(260,60%,55%)', 'hsl
 const formatCOP = (v: number) => `$${(v / 1000000).toFixed(1)}M`;
 
 export function DashboardCharts() {
-  // Ventas últimos 6 meses
   const { data: ventasMensuales = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['dashboard-ventas-mensuales'],
     queryFn: async () => {
@@ -24,13 +23,9 @@ export function DashboardCharts() {
         const fin = format(new Date(d.getFullYear(), d.getMonth() + 1, 0), 'yyyy-MM-dd');
         meses.push({ mes: format(d, 'MMM', { locale: es }), inicio, fin });
       }
-
       const results = await Promise.all(
         meses.map(async (m) => {
-          const { data } = await supabase.from('ordenes')
-            .select('total_final')
-            .gte('created_at', m.inicio)
-            .lte('created_at', m.fin + 'T23:59:59');
+          const { data } = await supabase.from('ordenes').select('total_final').gte('created_at', m.inicio).lte('created_at', m.fin + 'T23:59:59');
           const ventas = (data || []).reduce((s, o) => s + (o.total_final || 0), 0);
           return { mes: m.mes.charAt(0).toUpperCase() + m.mes.slice(1), ventas };
         })
@@ -39,7 +34,6 @@ export function DashboardCharts() {
     },
   });
 
-  // Productos por estado
   const { data: productosPorEstado = [], isLoading: loadingEstados } = useQuery({
     queryKey: ['dashboard-productos-estado'],
     queryFn: async () => {
@@ -47,20 +41,14 @@ export function DashboardCharts() {
       if (!data) return [];
       const counts: Record<string, number> = {};
       data.forEach((p) => { counts[p.estado_actual] = (counts[p.estado_actual] || 0) + 1; });
-      return ESTADOS_PRODUCTO
-        .map((e) => ({ estado: e.key, label: e.label, cantidad: counts[e.key] || 0 }))
-        .filter((e) => e.cantidad > 0);
+      return ESTADOS_PRODUCTO.map((e) => ({ estado: e.key, label: e.label, cantidad: counts[e.key] || 0 })).filter((e) => e.cantidad > 0);
     },
   });
 
-  // Laboratorios con órdenes activas
   const { data: labData = [], isLoading: loadingLabs } = useQuery({
     queryKey: ['dashboard-labs'],
     queryFn: async () => {
-      const { data } = await supabase.from('orden_productos')
-        .select('laboratorio_id, laboratorios(nombre)')
-        .not('laboratorio_id', 'is', null)
-        .neq('estado_actual', 'entregado');
+      const { data } = await supabase.from('orden_productos').select('laboratorio_id, laboratorios(nombre)').not('laboratorio_id', 'is', null).neq('estado_actual', 'entregado');
       if (!data) return [];
       const counts: Record<string, { nombre: string; total: number }> = {};
       data.forEach((p: any) => {
@@ -69,6 +57,36 @@ export function DashboardCharts() {
         counts[id].total++;
       });
       return Object.values(counts).sort((a, b) => b.total - a.total);
+    },
+  });
+
+  // Citas por semana (últimas 8 semanas) con asistencia vs no-shows
+  const { data: citasTendencia = [], isLoading: loadingCitas } = useQuery({
+    queryKey: ['dashboard-citas-tendencia'],
+    queryFn: async () => {
+      const now = new Date();
+      const semanas = [];
+      for (let i = 7; i >= 0; i--) {
+        const weekStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
+        semanas.push({
+          label: format(weekStart, 'dd MMM', { locale: es }),
+          inicio: format(weekStart, 'yyyy-MM-dd'),
+          fin: format(weekEnd, 'yyyy-MM-dd'),
+        });
+      }
+      const results = await Promise.all(
+        semanas.map(async (s) => {
+          const { data } = await supabase.from('citas').select('estado').gte('fecha', s.inicio).lte('fecha', s.fin);
+          const rows = data || [];
+          const total = rows.length;
+          const asistio = rows.filter(c => c.estado === 'asistio').length;
+          const noAsistio = rows.filter(c => c.estado === 'no_asistio').length;
+          const cancelada = rows.filter(c => c.estado === 'cancelada').length;
+          return { semana: s.label, total, asistió: asistio, noAsistió: noAsistio, cancelada };
+        })
+      );
+      return results;
     },
   });
 
@@ -94,6 +112,26 @@ export function DashboardCharts() {
       </Card>
 
       <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Citas por Semana — Asistencia vs No-Shows</CardTitle></CardHeader>
+        <CardContent>
+          {loadingCitas ? <ChartSkeleton /> : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={citasTendencia}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="semana" tick={{ fill: 'hsl(220,10%,46%)', fontSize: 11 }} />
+                <YAxis tick={{ fill: 'hsl(220,10%,46%)' }} allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="total" fill="hsl(210,80%,45%)" name="Total" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="asistió" fill="hsl(170,55%,42%)" name="Asistió" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="noAsistió" fill="hsl(0,72%,51%)" name="No Asistió" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Órdenes por Laboratorio</CardTitle></CardHeader>
         <CardContent>
           {loadingLabs ? <ChartSkeleton /> : labData.length === 0 ? (
@@ -112,15 +150,15 @@ export function DashboardCharts() {
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-2">
+      <Card>
         <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Productos por Estado</CardTitle></CardHeader>
         <CardContent>
           {loadingEstados ? <ChartSkeleton /> : productosPorEstado.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-20">Sin datos</p>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
-                <Pie data={productosPorEstado} dataKey="cantidad" nameKey="label" cx="50%" cy="50%" outerRadius={110} label={({ label, cantidad }) => `${label}: ${cantidad}`}>
+                <Pie data={productosPorEstado} dataKey="cantidad" nameKey="label" cx="50%" cy="50%" outerRadius={100} label={({ label, cantidad }) => `${label}: ${cantidad}`}>
                   {productosPorEstado.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}

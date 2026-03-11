@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,8 +20,6 @@ const horas = Array.from({ length: 20 }, (_, i) => {
   const m = i % 2 === 0 ? '00' : '20';
   return `${h.toString().padStart(2, '0')}:${m}`;
 }).filter(h => parseInt(h.split(':')[0]) < 18);
-
-type EstadoCita = 'agendada' | 'confirmada' | 'asistio' | 'no_asistio' | 'cancelada';
 
 const estadoColor: Record<string, string> = {
   agendada: 'bg-info/20 text-info border-info/30',
@@ -34,11 +33,14 @@ const estadoLabel: Record<string, string> = {
   agendada: 'Agendada', confirmada: 'Confirmada', asistio: 'Asistió', no_asistio: 'No Asistió', cancelada: 'Cancelada',
 };
 
+const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
 export default function Agenda() {
   const today = new Date().toISOString().split('T')[0];
   const [fecha, setFecha] = useState(today);
   const [showForm, setShowForm] = useState(false);
   const [selectedPaciente, setSelectedPaciente] = useState('');
+  const [showScheduleFor, setShowScheduleFor] = useState<{ userId: string; nombre: string } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: citas = [] } = useQuery({
@@ -66,10 +68,36 @@ export default function Agenda() {
   const { data: optometras = [] } = useQuery({
     queryKey: ['optometras'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('user_id, nombre').eq('estado_activo', true);
+      const { data: allRoles } = await supabase.from('user_roles').select('user_id').eq('role', 'optometra');
+      if (!allRoles?.length) return [];
+      const ids = allRoles.map(r => r.user_id);
+      const { data, error } = await supabase.from('profiles').select('user_id, nombre, email').in('user_id', ids).eq('estado_activo', true);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: sedes = [] } = useQuery({
+    queryKey: ['sedes-agenda'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('sedes').select('id, nombre').eq('estado_activa', true);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: horarios = [] } = useQuery({
+    queryKey: ['horarios-medico', showScheduleFor?.userId],
+    queryFn: async () => {
+      if (!showScheduleFor) return [];
+      const { data, error } = await supabase.from('horarios_medicos')
+        .select('*, sedes(nombre)')
+        .eq('medico_id', showScheduleFor.userId)
+        .order('dia_semana');
       if (error) throw error;
       return data;
     },
+    enabled: !!showScheduleFor,
   });
 
   const createCita = useMutation({
@@ -92,6 +120,30 @@ export default function Agenda() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const addSchedule = useMutation({
+    mutationFn: async (data: any) => {
+      const { error } = await supabase.from('horarios_medicos').insert(data);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['horarios-medico'] });
+      toast.success('Horario agregado');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteSchedule = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('horarios_medicos').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['horarios-medico'] });
+      toast.success('Horario eliminado');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -102,19 +154,31 @@ export default function Agenda() {
     createCita.mutate(data);
   };
 
+  const handleAddSchedule = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    addSchedule.mutate({
+      medico_id: showScheduleFor!.userId,
+      dia_semana: parseInt(fd.get('dia_semana') as string),
+      hora_inicio: fd.get('hora_inicio'),
+      hora_fin: fd.get('hora_fin'),
+      duracion_cita: parseInt(fd.get('duracion_cita') as string) || 30,
+      sede_id: fd.get('sede_id') || null,
+    });
+  };
+
   const changeDate = (days: number) => {
     const d = new Date(fecha);
     d.setDate(d.getDate() + days);
     setFecha(d.toISOString().split('T')[0]);
   };
 
-  // Group by optometra
   const optNames = [...new Set(citas.map((c: any) => (c as any).profiles?.nombre || 'Sin asignar'))];
   if (optNames.length === 0) optNames.push('Sin asignar');
 
   return (
     <AppLayout>
-      <PageHeader title="Agenda" description="Gestión de citas y agenda de optómetras">
+      <PageHeader title="Agenda" description="Gestión de citas, agenda y horarios de optómetras">
         <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nueva Cita</Button>
       </PageHeader>
 
@@ -128,7 +192,7 @@ export default function Agenda() {
       <Tabs defaultValue="dia">
         <TabsList className="mb-4">
           <TabsTrigger value="dia">Día</TabsTrigger>
-          <TabsTrigger value="semana">Semana</TabsTrigger>
+          <TabsTrigger value="horarios">Horarios Médicos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dia">
@@ -167,11 +231,36 @@ export default function Agenda() {
           </div>
         </TabsContent>
 
-        <TabsContent value="semana">
-          <Card><CardContent className="p-8 text-center text-muted-foreground">Vista semanal — próximamente</CardContent></Card>
+        <TabsContent value="horarios" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {optometras.length === 0 ? (
+              <p className="text-muted-foreground col-span-full text-center py-8">No hay optómetras registrados. Cree un usuario con rol "Optómetra" en el módulo de Usuarios.</p>
+            ) : (
+              optometras.map((doc: any) => (
+                <Card key={doc.user_id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-medium">{doc.nombre}</CardTitle>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowScheduleFor({ userId: doc.user_id, nombre: doc.nombre })}
+                      >
+                        <CalendarIcon className="h-3 w-3 mr-1" />Configurar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground">{doc.email}</p>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
         </TabsContent>
       </Tabs>
 
+      {/* New Appointment Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Nueva Cita</DialogTitle></DialogHeader>
@@ -206,6 +295,75 @@ export default function Agenda() {
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
               <Button type="submit" disabled={createCita.isPending}>{createCita.isPending ? 'Agendando...' : 'Agendar Cita'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Doctor Schedule Dialog */}
+      <Dialog open={!!showScheduleFor} onOpenChange={(o) => { if (!o) setShowScheduleFor(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Horarios — {showScheduleFor?.nombre}</DialogTitle></DialogHeader>
+
+          <div className="space-y-3 max-h-60 overflow-y-auto">
+            {horarios.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Sin horarios configurados</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Día</TableHead>
+                    <TableHead>Horario</TableHead>
+                    <TableHead>Duración</TableHead>
+                    <TableHead>Sede</TableHead>
+                    <TableHead className="w-8"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {horarios.map((h: any) => (
+                    <TableRow key={h.id}>
+                      <TableCell className="font-medium">{DIAS[h.dia_semana]}</TableCell>
+                      <TableCell>{h.hora_inicio} – {h.hora_fin}</TableCell>
+                      <TableCell>{h.duracion_cita} min</TableCell>
+                      <TableCell>{h.sedes?.nombre || 'Todas'}</TableCell>
+                      <TableCell>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteSchedule.mutate(h.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+
+          <form onSubmit={handleAddSchedule} className="grid grid-cols-2 gap-3 pt-4 border-t">
+            <div className="space-y-1">
+              <Label className="text-xs">Día</Label>
+              <Select name="dia_semana" defaultValue="1">
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DIAS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Sede</Label>
+              <Select name="sede_id">
+                <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                <SelectContent>
+                  {sedes.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1"><Label className="text-xs">Hora Inicio</Label><Input name="hora_inicio" type="time" defaultValue="08:00" required /></div>
+            <div className="space-y-1"><Label className="text-xs">Hora Fin</Label><Input name="hora_fin" type="time" defaultValue="12:00" required /></div>
+            <div className="space-y-1"><Label className="text-xs">Duración (min)</Label><Input name="duracion_cita" type="number" defaultValue="30" min="10" max="120" /></div>
+            <div className="flex items-end">
+              <Button type="submit" size="sm" className="w-full" disabled={addSchedule.isPending}>
+                <Plus className="h-3 w-3 mr-1" />Agregar
+              </Button>
             </div>
           </form>
         </DialogContent>

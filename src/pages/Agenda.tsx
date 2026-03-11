@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Trash2 } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { DoctorScheduleManager } from '@/components/schedule/DoctorScheduleManager';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,8 +32,6 @@ const estadoColor: Record<string, string> = {
 const estadoLabel: Record<string, string> = {
   agendada: 'Agendada', confirmada: 'Confirmada', asistio: 'Asistió', no_asistio: 'No Asistió', cancelada: 'Cancelada',
 };
-
-const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 export default function Agenda() {
   const today = new Date().toISOString().split('T')[0];
@@ -77,29 +75,6 @@ export default function Agenda() {
     },
   });
 
-  const { data: sedes = [] } = useQuery({
-    queryKey: ['sedes-agenda'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('sedes').select('id, nombre').eq('estado_activa', true);
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const { data: horarios = [] } = useQuery({
-    queryKey: ['horarios-medico', showScheduleFor?.userId],
-    queryFn: async () => {
-      if (!showScheduleFor) return [];
-      const { data, error } = await supabase.from('horarios_medicos')
-        .select('*, sedes(nombre)')
-        .eq('medico_id', showScheduleFor.userId)
-        .order('dia_semana');
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!showScheduleFor,
-  });
-
   const createCita = useMutation({
     mutationFn: async (formData: Record<string, any>) => {
       const { error } = await supabase.from('citas').insert({
@@ -120,30 +95,6 @@ export default function Agenda() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const addSchedule = useMutation({
-    mutationFn: async (data: any) => {
-      const { error } = await supabase.from('horarios_medicos').insert(data);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios-medico'] });
-      toast.success('Horario agregado');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const deleteSchedule = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('horarios_medicos').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios-medico'] });
-      toast.success('Horario eliminado');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -152,19 +103,6 @@ export default function Agenda() {
     data.paciente_id = selectedPaciente;
     if (!selectedPaciente) { toast.error('Seleccione un paciente'); return; }
     createCita.mutate(data);
-  };
-
-  const handleAddSchedule = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    addSchedule.mutate({
-      medico_id: showScheduleFor!.userId,
-      dia_semana: parseInt(fd.get('dia_semana') as string),
-      hora_inicio: fd.get('hora_inicio'),
-      hora_fin: fd.get('hora_fin'),
-      duracion_cita: parseInt(fd.get('duracion_cita') as string) || 30,
-      sede_id: fd.get('sede_id') || null,
-    });
   };
 
   const changeDate = (days: number) => {
@@ -300,74 +238,15 @@ export default function Agenda() {
         </DialogContent>
       </Dialog>
 
-      {/* Doctor Schedule Dialog */}
-      <Dialog open={!!showScheduleFor} onOpenChange={(o) => { if (!o) setShowScheduleFor(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Horarios — {showScheduleFor?.nombre}</DialogTitle></DialogHeader>
-
-          <div className="space-y-3 max-h-60 overflow-y-auto">
-            {horarios.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Sin horarios configurados</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Día</TableHead>
-                    <TableHead>Horario</TableHead>
-                    <TableHead>Duración</TableHead>
-                    <TableHead>Sede</TableHead>
-                    <TableHead className="w-8"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {horarios.map((h: any) => (
-                    <TableRow key={h.id}>
-                      <TableCell className="font-medium">{DIAS[h.dia_semana]}</TableCell>
-                      <TableCell>{h.hora_inicio} – {h.hora_fin}</TableCell>
-                      <TableCell>{h.duracion_cita} min</TableCell>
-                      <TableCell>{h.sedes?.nombre || 'Todas'}</TableCell>
-                      <TableCell>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteSchedule.mutate(h.id)}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-
-          <form onSubmit={handleAddSchedule} className="grid grid-cols-2 gap-3 pt-4 border-t">
-            <div className="space-y-1">
-              <Label className="text-xs">Día</Label>
-              <Select name="dia_semana" defaultValue="1">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {DIAS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Sede</Label>
-              <Select name="sede_id">
-                <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                <SelectContent>
-                  {sedes.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1"><Label className="text-xs">Hora Inicio</Label><Input name="hora_inicio" type="time" defaultValue="08:00" required /></div>
-            <div className="space-y-1"><Label className="text-xs">Hora Fin</Label><Input name="hora_fin" type="time" defaultValue="12:00" required /></div>
-            <div className="space-y-1"><Label className="text-xs">Duración (min)</Label><Input name="duracion_cita" type="number" defaultValue="30" min="10" max="120" /></div>
-            <div className="flex items-end">
-              <Button type="submit" size="sm" className="w-full" disabled={addSchedule.isPending}>
-                <Plus className="h-3 w-3 mr-1" />Agregar
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Doctor Schedule Manager */}
+      {showScheduleFor && (
+        <DoctorScheduleManager
+          medicoId={showScheduleFor.userId}
+          medicoNombre={showScheduleFor.nombre}
+          open={!!showScheduleFor}
+          onOpenChange={(o) => { if (!o) setShowScheduleFor(null); }}
+        />
+      )}
     </AppLayout>
   );
 }

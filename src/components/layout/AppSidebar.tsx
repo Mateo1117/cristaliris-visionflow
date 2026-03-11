@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Calendar, ClipboardList, Stethoscope,
-  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare
+  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -30,6 +30,7 @@ const operacionItems = [
 const configItems = [
   { title: 'Usuarios', url: '/usuarios', icon: UserCog },
   { title: 'Configuración', url: '/configuracion', icon: Settings },
+  { title: 'API Docs', url: '/api-docs', icon: FileText },
 ];
 
 export function AppSidebar() {

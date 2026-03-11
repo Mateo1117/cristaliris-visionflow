@@ -32,6 +32,7 @@ export default function QualityControl() {
 
   const updateState = useMutation({
     mutationFn: async ({ id, newState, oldState, obs }: { id: string; newState: string; oldState: string; obs: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
       const { error: e1 } = await supabase.from('orden_productos')
         .update({ estado_actual: newState as any, observaciones: obs || null, fecha_control_calidad: new Date().toISOString() })
         .eq('id', id);
@@ -43,6 +44,7 @@ export default function QualityControl() {
         estado_nuevo: newState as any,
         metodo: 'control_calidad',
         justificacion: obs || null,
+        usuario_id: user?.id || null,
       });
       if (e2) throw e2;
     },

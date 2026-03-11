@@ -55,7 +55,20 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         .eq('orden_producto_id', item.id)
         .order('fecha_cambio', { ascending: false });
       if (error) throw error;
-      return data;
+      
+      // Fetch profile names for entries with usuario_id
+      const userIds = [...new Set(data.filter(d => d.usuario_id).map(d => d.usuario_id))];
+      let profileMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, nombre')
+          .in('user_id', userIds);
+        if (profiles) {
+          profileMap = Object.fromEntries(profiles.map(p => [p.user_id, p.nombre]));
+        }
+      }
+      return data.map(d => ({ ...d, usuario_nombre: d.usuario_id ? profileMap[d.usuario_id] || null : null }));
     },
     enabled: !!item && open,
   });
@@ -220,6 +233,16 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                       <span className="text-muted-foreground">{h.estado_anterior || '—'}</span>
                       <span className="mx-1">→</span>
                       <span className="font-medium">{h.estado_nuevo}</span>
+                      {h.usuario_nombre && (
+                        <div className="text-foreground mt-0.5">
+                          👤 {h.usuario_nombre}
+                        </div>
+                      )}
+                      {h.justificacion && (
+                        <div className="text-muted-foreground mt-0.5 italic">
+                          💬 {h.justificacion}
+                        </div>
+                      )}
                       <div className="text-muted-foreground mt-0.5">
                         {new Date(h.fecha_cambio).toLocaleString('es-CO')} · {h.metodo}
                       </div>

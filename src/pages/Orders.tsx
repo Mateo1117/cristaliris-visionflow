@@ -1,6 +1,7 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { KanbanBoard } from '@/components/orders/KanbanBoard';
+import { OrderListView } from '@/components/orders/OrderListView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Package, Calculator } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Package, Calculator, Kanban, List } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -141,7 +143,6 @@ export default function Orders() {
     createOrden.mutate(data);
   };
 
-  // When selecting an inventory item, auto-fill costo_montura
   const handleMonturaChange = (val: string) => {
     setSelectedMontura(val === 'none' ? '' : val);
     if (val && val !== 'none') {
@@ -159,7 +160,21 @@ export default function Orders() {
       <PageHeader title="Órdenes" description="Seguimiento de producción y entregas">
         <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nueva Orden</Button>
       </PageHeader>
-      <KanbanBoard />
+
+      <Tabs defaultValue="kanban" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="kanban" className="gap-1.5"><Kanban className="h-4 w-4" />Kanban</TabsTrigger>
+          <TabsTrigger value="lista" className="gap-1.5"><List className="h-4 w-4" />Lista</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="kanban">
+          <KanbanBoard />
+        </TabsContent>
+
+        <TabsContent value="lista">
+          <OrderListView />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) resetForm(); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -200,7 +215,6 @@ export default function Orders() {
               </div>
             </div>
 
-            {/* Inventory item selector */}
             <div className="space-y-2">
               <Label className="flex items-center gap-1"><Package className="h-3.5 w-3.5" />Ítem de Inventario (opcional)</Label>
               <Select value={selectedMontura} onValueChange={handleMonturaChange}>
@@ -243,7 +257,6 @@ export default function Orders() {
 
             <Separator />
 
-            {/* Cost breakdown */}
             <div className="space-y-3">
               <Label className="flex items-center gap-1 text-sm font-semibold"><Calculator className="h-4 w-4 text-primary" />Desglose de Costos</Label>
               <div className="grid grid-cols-2 gap-3">
@@ -273,10 +286,9 @@ export default function Orders() {
                 </div>
               </div>
 
-              {/* Utility preview */}
-              <div className={`rounded-lg p-3 flex items-center justify-between ${utilidad >= 0 ? 'bg-green-500/10 border border-green-500/30' : 'bg-destructive/10 border border-destructive/30'}`}>
+              <div className={`rounded-lg p-3 flex items-center justify-between ${utilidad >= 0 ? 'bg-success/10 border border-success/30' : 'bg-destructive/10 border border-destructive/30'}`}>
                 <span className="text-sm font-medium">Utilidad Calculada</span>
-                <span className={`text-lg font-bold ${utilidad >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                <span className={`text-lg font-bold ${utilidad >= 0 ? 'text-success' : 'text-destructive'}`}>
                   ${utilidad.toLocaleString('es-CO')}
                 </span>
               </div>

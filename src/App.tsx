@@ -40,6 +40,7 @@ const App = () => (
           <Route path="/garantias" element={<ProtectedRoute><Warranties /></ProtectedRoute>} />
           <Route path="/reportes" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/scan" element={<ProtectedRoute><ScanQR /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

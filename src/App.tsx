@@ -20,6 +20,7 @@ import SettingsPage from "./pages/Settings";
 import ScanQR from "./pages/ScanQR";
 import UsersPage from "./pages/Users";
 import QualityControl from "./pages/QualityControl";
+import ApiDocs from "./pages/ApiDocs";
 
 const queryClient = new QueryClient();
 

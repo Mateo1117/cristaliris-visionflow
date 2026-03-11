@@ -14,7 +14,8 @@ export function PatientTable({ searchQuery, pacientes, isLoading }: PatientTable
   const filtered = pacientes.filter((p: any) =>
     p.numero_documento?.includes(q) ||
     `${p.nombres} ${p.apellidos}`.toLowerCase().includes(q) ||
-    p.telefono?.includes(q)
+    p.telefono?.includes(q) ||
+    p.referido_por?.toLowerCase().includes(q)
   );
 
   if (isLoading) {
@@ -29,7 +30,8 @@ export function PatientTable({ searchQuery, pacientes, isLoading }: PatientTable
             <TableHead>Documento</TableHead>
             <TableHead>Nombre</TableHead>
             <TableHead className="hidden md:table-cell">Teléfono</TableHead>
-            <TableHead className="hidden lg:table-cell">Ciudad</TableHead>
+            <TableHead className="hidden lg:table-cell">Empresa</TableHead>
+            <TableHead className="hidden lg:table-cell">Referido</TableHead>
             <TableHead className="hidden lg:table-cell">Sede</TableHead>
             <TableHead>Pago</TableHead>
           </TableRow>
@@ -40,7 +42,8 @@ export function PatientTable({ searchQuery, pacientes, isLoading }: PatientTable
               <TableCell className="font-medium">{p.tipo_documento} {p.numero_documento}</TableCell>
               <TableCell>{p.nombres} {p.apellidos}</TableCell>
               <TableCell className="hidden md:table-cell">{p.telefono}</TableCell>
-              <TableCell className="hidden lg:table-cell">{p.ciudad}</TableCell>
+              <TableCell className="hidden lg:table-cell">{p.empresas?.razon_social ?? '—'}</TableCell>
+              <TableCell className="hidden lg:table-cell">{p.referido_por ?? '—'}</TableCell>
               <TableCell className="hidden lg:table-cell">{p.sedes?.nombre ?? '—'}</TableCell>
               <TableCell>
                 <Badge variant={p.modalidad_pago === 'nomina' ? 'secondary' : 'outline'}>
@@ -50,7 +53,7 @@ export function PatientTable({ searchQuery, pacientes, isLoading }: PatientTable
             </TableRow>
           ))}
           {filtered.length === 0 && (
-            <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No se encontraron pacientes</TableCell></TableRow>
+            <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No se encontraron pacientes</TableCell></TableRow>
           )}
         </TableBody>
       </Table>

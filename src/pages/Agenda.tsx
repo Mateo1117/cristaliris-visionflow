@@ -1,12 +1,215 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { AgendaCalendar } from '@/components/agenda/AgendaCalendar';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+const horas = Array.from({ length: 20 }, (_, i) => {
+  const h = Math.floor(i / 2) + 8;
+  const m = i % 2 === 0 ? '00' : '20';
+  return `${h.toString().padStart(2, '0')}:${m}`;
+}).filter(h => parseInt(h.split(':')[0]) < 18);
+
+type EstadoCita = 'agendada' | 'confirmada' | 'asistio' | 'no_asistio' | 'cancelada';
+
+const estadoColor: Record<string, string> = {
+  agendada: 'bg-info/20 text-info border-info/30',
+  confirmada: 'bg-primary/20 text-primary border-primary/30',
+  asistio: 'bg-success/20 text-success border-success/30',
+  no_asistio: 'bg-destructive/20 text-destructive border-destructive/30',
+  cancelada: 'bg-muted text-muted-foreground border-muted',
+};
+
+const estadoLabel: Record<string, string> = {
+  agendada: 'Agendada', confirmada: 'Confirmada', asistio: 'Asistió', no_asistio: 'No Asistió', cancelada: 'Cancelada',
+};
 
 export default function Agenda() {
+  const today = new Date().toISOString().split('T')[0];
+  const [fecha, setFecha] = useState(today);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedPaciente, setSelectedPaciente] = useState('');
+  const queryClient = useQueryClient();
+
+  const { data: citas = [] } = useQuery({
+    queryKey: ['citas', fecha],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('citas')
+        .select('*, pacientes(nombres, apellidos), profiles:optometra_id(nombre)')
+        .eq('fecha', fecha)
+        .order('hora_inicio');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: pacientes = [] } = useQuery({
+    queryKey: ['pacientes-agenda'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('pacientes').select('id, nombres, apellidos, numero_documento').order('nombres');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: optometras = [] } = useQuery({
+    queryKey: ['optometras'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('user_id, nombre').eq('estado_activo', true);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const createCita = useMutation({
+    mutationFn: async (formData: Record<string, any>) => {
+      const { error } = await supabase.from('citas').insert({
+        paciente_id: formData.paciente_id,
+        optometra_id: formData.optometra_id || null,
+        fecha: formData.fecha,
+        hora_inicio: formData.hora_inicio,
+        hora_fin: formData.hora_fin,
+        origen: 'manual',
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['citas'] });
+      setShowForm(false);
+      toast.success('Cita agendada exitosamente');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const data: Record<string, any> = {};
+    fd.forEach((v, k) => { data[k] = v; });
+    data.paciente_id = selectedPaciente;
+    if (!selectedPaciente) { toast.error('Seleccione un paciente'); return; }
+    createCita.mutate(data);
+  };
+
+  const changeDate = (days: number) => {
+    const d = new Date(fecha);
+    d.setDate(d.getDate() + days);
+    setFecha(d.toISOString().split('T')[0]);
+  };
+
+  // Group by optometra
+  const optNames = [...new Set(citas.map((c: any) => (c as any).profiles?.nombre || 'Sin asignar'))];
+  if (optNames.length === 0) optNames.push('Sin asignar');
+
   return (
     <AppLayout>
-      <PageHeader title="Agenda" description="Gestión de citas y agenda de optómetras" />
-      <AgendaCalendar />
+      <PageHeader title="Agenda" description="Gestión de citas y agenda de optómetras">
+        <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nueva Cita</Button>
+      </PageHeader>
+
+      <div className="flex items-center gap-3 mb-4">
+        <Button variant="outline" size="icon" onClick={() => changeDate(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+        <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-[180px]" />
+        <Button variant="outline" size="icon" onClick={() => changeDate(1)}><ChevronRight className="h-4 w-4" /></Button>
+        <Button variant="ghost" size="sm" onClick={() => setFecha(today)}>Hoy</Button>
+      </div>
+
+      <Tabs defaultValue="dia">
+        <TabsList className="mb-4">
+          <TabsTrigger value="dia">Día</TabsTrigger>
+          <TabsTrigger value="semana">Semana</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="dia">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {optNames.map((opt) => (
+              <Card key={opt}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">{opt}</CardTitle>
+                  <p className="text-xs text-muted-foreground">{new Date(fecha + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="divide-y">
+                    {horas.map((hora) => {
+                      const cita = citas.find((c: any) => c.hora_inicio === hora + ':00' && ((c as any).profiles?.nombre || 'Sin asignar') === opt);
+                      return (
+                        <div key={hora} className="flex items-center px-4 py-2 min-h-[3rem]">
+                          <span className="text-xs text-muted-foreground w-12 flex-shrink-0">{hora}</span>
+                          {cita ? (
+                            <div className={`flex-1 rounded-md border px-3 py-1.5 ${estadoColor[(cita as any).estado] || ''}`}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium">{(cita as any).pacientes?.nombres} {(cita as any).pacientes?.apellidos}</span>
+                                <Badge variant="outline" className="text-[10px] h-5">{estadoLabel[(cita as any).estado] || (cita as any).estado}</Badge>
+                              </div>
+                              <span className="text-[10px] opacity-70">{(cita as any).hora_inicio} - {(cita as any).hora_fin} · {(cita as any).origen}</span>
+                            </div>
+                          ) : (
+                            <div className="flex-1 h-8 rounded-md border border-dashed border-border/50" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="semana">
+          <Card><CardContent className="p-8 text-center text-muted-foreground">Vista semanal — próximamente</CardContent></Card>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Nueva Cita</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Paciente *</Label>
+              <Select onValueChange={setSelectedPaciente}>
+                <SelectTrigger><SelectValue placeholder="Seleccione paciente" /></SelectTrigger>
+                <SelectContent>
+                  {pacientes.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>{p.numero_documento} — {p.nombres} {p.apellidos}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Optómetra</Label>
+              <Select name="optometra_id">
+                <SelectTrigger><SelectValue placeholder="Seleccione optómetra" /></SelectTrigger>
+                <SelectContent>
+                  {optometras.map((o: any) => (
+                    <SelectItem key={o.user_id} value={o.user_id}>{o.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2"><Label>Fecha *</Label><Input name="fecha" type="date" required defaultValue={fecha} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Hora Inicio *</Label><Input name="hora_inicio" type="time" required defaultValue="08:00" /></div>
+              <div className="space-y-2"><Label>Hora Fin *</Label><Input name="hora_fin" type="time" required defaultValue="08:20" /></div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+              <Button type="submit" disabled={createCita.isPending}>{createCita.isPending ? 'Agendando...' : 'Agendar Cita'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

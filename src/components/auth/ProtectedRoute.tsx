@@ -1,7 +1,8 @@
+import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 
-const Index = () => {
+export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -12,7 +13,9 @@ const Index = () => {
     );
   }
 
-  return <Navigate to={user ? '/dashboard' : '/auth'} replace />;
-};
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
 
-export default Index;
+  return <>{children}</>;
+}

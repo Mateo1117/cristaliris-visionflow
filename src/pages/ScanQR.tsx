@@ -329,7 +329,12 @@ export default function ScanQR() {
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-2">Este producto ya está en su estado final.</p>
               )}
-              {!success && <Button onClick={resetAll} variant="ghost" size="sm" className="w-full"><RotateCcw className="h-3 w-3 mr-1" />Escanear Otro</Button>}
+              {!success && (
+                <div className="flex gap-2">
+                  <Button onClick={resetAll} variant="ghost" size="sm" className="flex-1"><RotateCcw className="h-3 w-3 mr-1" />Escanear Otro</Button>
+                  <Button onClick={resetAll} variant="outline" size="sm" className="flex-1"><CheckCircle2 className="h-3 w-3 mr-1" />Finalizar</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

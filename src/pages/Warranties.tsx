@@ -57,9 +57,18 @@ export default function Warranties() {
     <AppLayout>
       <PageHeader title="Garantías" description="Protocolo de adaptación y gestión de garantías" />
 
-      <div className="relative mb-4 max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar por subcódigo, paciente o motivo..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="relative max-w-md flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Buscar por subcódigo, paciente o motivo..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+        </div>
+        <Tabs value={origen} onValueChange={(v) => setOrigen(v as any)}>
+          <TabsList>
+            <TabsTrigger value="todas">Todas ({garantias.length})</TabsTrigger>
+            <TabsTrigger value="calidad">Rechazo Calidad ({countCalidad})</TabsTrigger>
+            <TabsTrigger value="cliente">Solicitud Cliente ({countCliente})</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       <Card>

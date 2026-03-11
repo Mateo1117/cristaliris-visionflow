@@ -242,6 +242,16 @@ export default function ScanQR() {
       const newQty = invItem.cantidad_disponible + qty;
       const { error } = await supabase.from('inventario').update({ cantidad_disponible: newQty }).eq('id', invItem.id);
       if (error) throw error;
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('movimientos_inventario').insert({
+        inventario_id: invItem.id,
+        tipo_movimiento: 'entrada',
+        cantidad: qty,
+        cantidad_anterior: invItem.cantidad_disponible,
+        cantidad_nueva: newQty,
+        motivo: 'Ingreso via QR',
+        usuario_id: user?.id || null,
+      });
       setInvItem(prev => prev ? { ...prev, cantidad_disponible: newQty } : null);
       setSuccess(true);
       setInvStep('done');

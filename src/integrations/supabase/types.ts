@@ -928,6 +928,7 @@ export type Database = {
           nombres: string
           numero_documento: string
           observaciones: string | null
+          referido_por: string | null
           sede_registro: string | null
           telefono: string | null
           tipo_documento: string
@@ -949,6 +950,7 @@ export type Database = {
           nombres: string
           numero_documento: string
           observaciones?: string | null
+          referido_por?: string | null
           sede_registro?: string | null
           telefono?: string | null
           tipo_documento: string
@@ -970,6 +972,7 @@ export type Database = {
           nombres?: string
           numero_documento?: string
           observaciones?: string | null
+          referido_por?: string | null
           sede_registro?: string | null
           telefono?: string | null
           tipo_documento?: string

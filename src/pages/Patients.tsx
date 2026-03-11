@@ -43,6 +43,8 @@ export default function Patients() {
         departamento: formData.departamento || 'Cundinamarca',
         modalidad_pago: formData.modalidad_pago || 'contado',
         es_fuera_bogota: formData.ciudad !== 'Bogotá',
+        empresa_id: formData.empresa_id || null,
+        referido_por: formData.referido_por || null,
       });
       if (error) throw error;
     },

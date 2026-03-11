@@ -525,6 +525,50 @@ export type Database = {
           },
         ]
       }
+      horarios_medicos: {
+        Row: {
+          activo: boolean
+          created_at: string
+          dia_semana: number
+          duracion_cita: number
+          hora_fin: string
+          hora_inicio: string
+          id: string
+          medico_id: string
+          sede_id: string | null
+        }
+        Insert: {
+          activo?: boolean
+          created_at?: string
+          dia_semana: number
+          duracion_cita?: number
+          hora_fin: string
+          hora_inicio: string
+          id?: string
+          medico_id: string
+          sede_id?: string | null
+        }
+        Update: {
+          activo?: boolean
+          created_at?: string
+          dia_semana?: number
+          duracion_cita?: number
+          hora_fin?: string
+          hora_inicio?: string
+          id?: string
+          medico_id?: string
+          sede_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "horarios_medicos_sede_id_fkey"
+            columns: ["sede_id"]
+            isOneToOne: false
+            referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventario: {
         Row: {
           cantidad_disponible: number

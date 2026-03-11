@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, UserPlus, Calendar as CalendarIcon } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Plus, UserPlus, Calendar as CalendarIcon, MoreHorizontal, Shield, KeyRound, UserX, UserCheck, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -31,6 +32,9 @@ export default function UsersPage() {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showSchedule, setShowSchedule] = useState<string | null>(null);
   const [scheduleDoctor, setScheduleDoctor] = useState<string>('');
+  const [showChangeRole, setShowChangeRole] = useState<{ userId: string; nombre: string; currentRole: string } | null>(null);
+  const [showResetPassword, setShowResetPassword] = useState<{ userId: string; nombre: string } | null>(null);
+  const [showEditProfile, setShowEditProfile] = useState<any | null>(null);
   const queryClient = useQueryClient();
 
   const { data: profiles = [] } = useQuery({
@@ -81,29 +85,61 @@ export default function UsersPage() {
 
   const isDoctor = (userId: string) => getRoleForUser(userId) === 'optometra';
 
-  const createUser = useMutation({
-    mutationFn: async (formData: Record<string, string>) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No autenticado');
+  const invokeAdmin = async (body: Record<string, any>) => {
+    const res = await supabase.functions.invoke('create-user', { body });
+    if (res.error) throw res.error;
+    if (res.data?.error) throw new Error(res.data.error);
+    return res.data;
+  };
 
-      const res = await supabase.functions.invoke('create-user', {
-        body: {
-          email: formData.email,
-          password: formData.password,
-          nombre: formData.nombre,
-          rol: formData.rol,
-          sedes_asignadas: formData.sede_id ? [formData.sede_id] : [],
-        },
-      });
-      if (res.error) throw res.error;
-      if (res.data?.error) throw new Error(res.data.error);
-      return res.data;
-    },
+  const createUser = useMutation({
+    mutationFn: async (formData: Record<string, string>) => invokeAdmin({ action: 'create', ...formData, sedes_asignadas: formData.sede_id ? [formData.sede_id] : [] }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['all-roles'] });
       setShowCreateUser(false);
       toast.success('Usuario creado exitosamente');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const changeRole = useMutation({
+    mutationFn: async ({ target_user_id, new_role }: { target_user_id: string; new_role: string }) =>
+      invokeAdmin({ action: 'change_role', target_user_id, new_role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-roles'] });
+      setShowChangeRole(null);
+      toast.success('Rol actualizado');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: async ({ target_user_id, new_password }: { target_user_id: string; new_password: string }) =>
+      invokeAdmin({ action: 'reset_password', target_user_id, new_password }),
+    onSuccess: () => {
+      setShowResetPassword(null);
+      toast.success('Contraseña actualizada');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: async ({ target_user_id, active }: { target_user_id: string; active: boolean }) =>
+      invokeAdmin({ action: 'toggle_active', target_user_id, active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-profiles'] });
+      toast.success('Estado del usuario actualizado');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const updateProfile = useMutation({
+    mutationFn: async (data: any) => invokeAdmin({ action: 'update_profile', ...data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-profiles'] });
+      setShowEditProfile(null);
+      toast.success('Perfil actualizado');
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -161,7 +197,7 @@ export default function UsersPage() {
 
   return (
     <AppLayout>
-      <PageHeader title="Usuarios y Médicos" description="Gestión de usuarios, roles y horarios médicos">
+      <PageHeader title="Usuarios y Médicos" description="Gestión de usuarios, roles, contraseñas y horarios médicos">
         <Button onClick={() => setShowCreateUser(true)}><UserPlus className="h-4 w-4 mr-1" />Nuevo Usuario</Button>
       </PageHeader>
 
@@ -179,23 +215,63 @@ export default function UsersPage() {
                   <TableRow>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>Teléfono</TableHead>
                     <TableHead>Rol</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {profiles.map((p: any) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.nombre}</TableCell>
-                      <TableCell>{p.email}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{ROLES.find(r => r.value === getRoleForUser(p.user_id))?.label || getRoleForUser(p.user_id)}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={p.estado_activo ? 'default' : 'secondary'}>{p.estado_activo ? 'Activo' : 'Inactivo'}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {profiles.map((p: any) => {
+                    const role = getRoleForUser(p.user_id);
+                    const roleLabel = ROLES.find(r => r.value === role)?.label || role;
+                    return (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-medium">{p.nombre}</TableCell>
+                        <TableCell>{p.email}</TableCell>
+                        <TableCell>{p.telefono || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={role === 'admin' ? 'default' : 'outline'}>{roleLabel}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={p.estado_activo ? 'default' : 'secondary'}>
+                            {p.estado_activo ? 'Activo' : 'Inactivo'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setShowEditProfile(p)}>
+                                <Pencil className="h-4 w-4 mr-2" />Editar Perfil
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setShowChangeRole({ userId: p.user_id, nombre: p.nombre, currentRole: role })}>
+                                <Shield className="h-4 w-4 mr-2" />Cambiar Rol
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setShowResetPassword({ userId: p.user_id, nombre: p.nombre })}>
+                                <KeyRound className="h-4 w-4 mr-2" />Cambiar Contraseña
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => toggleActive.mutate({ target_user_id: p.user_id, active: !p.estado_activo })}
+                                className={p.estado_activo ? 'text-destructive' : 'text-green-600'}
+                              >
+                                {p.estado_activo ? (
+                                  <><UserX className="h-4 w-4 mr-2" />Desactivar</>
+                                ) : (
+                                  <><UserCheck className="h-4 w-4 mr-2" />Activar</>
+                                )}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>
@@ -259,11 +335,87 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Change Role Dialog */}
+      <Dialog open={!!showChangeRole} onOpenChange={(o) => { if (!o) setShowChangeRole(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Cambiar Rol — {showChangeRole?.nombre}</DialogTitle></DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const newRole = fd.get('new_role') as string;
+            if (!newRole || !showChangeRole) return;
+            changeRole.mutate({ target_user_id: showChangeRole.userId, new_role: newRole });
+          }} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nuevo Rol</Label>
+              <Select name="new_role" defaultValue={showChangeRole?.currentRole}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowChangeRole(null)}>Cancelar</Button>
+              <Button type="submit" disabled={changeRole.isPending}>{changeRole.isPending ? 'Guardando...' : 'Guardar'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!showResetPassword} onOpenChange={(o) => { if (!o) setShowResetPassword(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Cambiar Contraseña — {showResetPassword?.nombre}</DialogTitle></DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const pw = fd.get('new_password') as string;
+            if (!pw || pw.length < 6 || !showResetPassword) {
+              toast.error('La contraseña debe tener al menos 6 caracteres');
+              return;
+            }
+            resetPassword.mutate({ target_user_id: showResetPassword.userId, new_password: pw });
+          }} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nueva Contraseña</Label>
+              <Input name="new_password" type="password" required minLength={6} placeholder="Mínimo 6 caracteres" />
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowResetPassword(null)}>Cancelar</Button>
+              <Button type="submit" disabled={resetPassword.isPending}>{resetPassword.isPending ? 'Guardando...' : 'Cambiar'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={!!showEditProfile} onOpenChange={(o) => { if (!o) setShowEditProfile(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Editar Perfil — {showEditProfile?.nombre}</DialogTitle></DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            updateProfile.mutate({
+              target_user_id: showEditProfile?.user_id,
+              nombre: fd.get('nombre') as string,
+              telefono: fd.get('telefono') as string || null,
+            });
+          }} className="space-y-4">
+            <div className="space-y-2"><Label>Nombre</Label><Input name="nombre" defaultValue={showEditProfile?.nombre} required /></div>
+            <div className="space-y-2"><Label>Teléfono</Label><Input name="telefono" defaultValue={showEditProfile?.telefono || ''} /></div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowEditProfile(null)}>Cancelar</Button>
+              <Button type="submit" disabled={updateProfile.isPending}>{updateProfile.isPending ? 'Guardando...' : 'Guardar'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Schedule Dialog */}
       <Dialog open={!!showSchedule} onOpenChange={(o) => { if (!o) setShowSchedule(null); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Horarios — {scheduleDoctor}</DialogTitle></DialogHeader>
-
           <div className="space-y-3 max-h-60 overflow-y-auto">
             {horarios.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">Sin horarios configurados</p>
@@ -279,7 +431,6 @@ export default function UsersPage() {
               </div>
             ))}
           </div>
-
           <form onSubmit={handleAddSchedule} className="grid grid-cols-2 gap-3 pt-4 border-t">
             <div className="space-y-1">
               <Label className="text-xs">Día</Label>

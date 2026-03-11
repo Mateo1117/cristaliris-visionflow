@@ -8,16 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Search, AlertTriangle } from 'lucide-react';
+import { Plus, Search, AlertTriangle, QrCode } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { InventoryDetailDialog } from '@/components/inventory/InventoryDetailDialog';
 
 export default function Inventory() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState('todos');
+  const [selectedItem, setSelectedItem] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: items = [], isLoading } = useQuery({
@@ -115,17 +117,18 @@ export default function Inventory() {
               <TableHead>Stock</TableHead>
               <TableHead className="hidden md:table-cell">Precio Venta</TableHead>
               <TableHead className="hidden lg:table-cell">Sede</TableHead>
+              <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay ítems{search ? ' que coincidan' : ''}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hay ítems{search ? ' que coincidan' : ''}</TableCell></TableRow>
             ) : filtered.map((item: any) => {
               const lowStock = item.cantidad_disponible <= item.stock_minimo;
               return (
-                <TableRow key={item.id}>
+                <TableRow key={item.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedItem(item)}>
                   <TableCell className="text-sm font-mono">{item.codigo_referencia || '—'}</TableCell>
                   <TableCell className="font-medium">{item.descripcion || `${item.marca || ''} ${item.modelo || ''}`}</TableCell>
                   <TableCell><Badge variant="outline" className="text-[10px]">{item.tipo}</Badge></TableCell>
@@ -138,6 +141,11 @@ export default function Inventory() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-sm">${item.precio_venta?.toLocaleString('es-CO') || '0'}</TableCell>
                   <TableCell className="hidden lg:table-cell text-sm">{(item as any).sedes?.nombre || '—'}</TableCell>
+                  <TableCell>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setSelectedItem(item); }}>
+                      <QrCode className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -145,6 +153,7 @@ export default function Inventory() {
         </Table>
       </Card>
 
+      {/* Create Item Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Nuevo Ítem de Inventario</DialogTitle></DialogHeader>
@@ -197,6 +206,15 @@ export default function Inventory() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Inventory Detail with QR/Barcode */}
+      {selectedItem && (
+        <InventoryDetailDialog
+          item={selectedItem}
+          open={!!selectedItem}
+          onOpenChange={(o) => { if (!o) setSelectedItem(null); }}
+        />
+      )}
     </AppLayout>
   );
 }

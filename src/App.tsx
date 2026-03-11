@@ -17,6 +17,7 @@ import Billing from "./pages/Billing";
 import Warranties from "./pages/Warranties";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/Settings";
+import ScanQR from "./pages/ScanQR";
 
 const queryClient = new QueryClient();
 

@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Calendar, ClipboardList, Stethoscope,
-  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye
+  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -16,6 +16,7 @@ const mainItems = [
   { title: 'Agenda', url: '/agenda', icon: Calendar },
   { title: 'Órdenes', url: '/ordenes', icon: ClipboardList },
   { title: 'Historia Clínica', url: '/historia-clinica', icon: Stethoscope },
+  { title: 'Control Calidad', url: '/control-calidad', icon: CheckSquare },
 ];
 
 const operacionItems = [
@@ -23,9 +24,11 @@ const operacionItems = [
   { title: 'Cartera', url: '/cartera', icon: Wallet },
   { title: 'Garantías', url: '/garantias', icon: ShieldCheck },
   { title: 'Reportes', url: '/reportes', icon: BarChart3 },
+  { title: 'Escanear QR', url: '/scan', icon: QrCode },
 ];
 
 const configItems = [
+  { title: 'Usuarios', url: '/usuarios', icon: UserCog },
   { title: 'Configuración', url: '/configuracion', icon: Settings },
 ];
 

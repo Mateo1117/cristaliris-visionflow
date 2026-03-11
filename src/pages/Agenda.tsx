@@ -87,64 +87,6 @@ export default function Agenda() {
     },
   });
 
-  const { data: horarios = [] } = useQuery({
-    queryKey: ['horarios-medico', showScheduleFor?.userId],
-    queryFn: async () => {
-      if (!showScheduleFor) return [];
-      const { data, error } = await supabase.from('horarios_medicos')
-        .select('*, sedes(nombre)')
-        .eq('medico_id', showScheduleFor.userId)
-        .order('dia_semana');
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!showScheduleFor,
-  });
-
-  const createCita = useMutation({
-    mutationFn: async (formData: Record<string, any>) => {
-      const { error } = await supabase.from('citas').insert({
-        paciente_id: formData.paciente_id,
-        optometra_id: formData.optometra_id || null,
-        fecha: formData.fecha,
-        hora_inicio: formData.hora_inicio,
-        hora_fin: formData.hora_fin,
-        origen: 'manual',
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['citas'] });
-      setShowForm(false);
-      toast.success('Cita agendada exitosamente');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const addSchedule = useMutation({
-    mutationFn: async (data: any) => {
-      const { error } = await supabase.from('horarios_medicos').insert(data);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios-medico'] });
-      toast.success('Horario agregado');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const deleteSchedule = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('horarios_medicos').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios-medico'] });
-      toast.success('Horario eliminado');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);

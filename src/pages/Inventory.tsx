@@ -87,7 +87,19 @@ export default function Inventory() {
   return (
     <AppLayout>
       <PageHeader title="Inventario" description="Gestión de monturas, lentes e insumos por sede">
-        <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nuevo Ítem</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportToCSV(filtered, 'inventario', [
+            { key: 'codigo_referencia', label: 'Código' },
+            { key: 'descripcion', label: 'Descripción' },
+            { key: 'tipo', label: 'Tipo' },
+            { key: 'marca', label: 'Marca' },
+            { key: 'modelo', label: 'Modelo' },
+            { key: 'cantidad_disponible', label: 'Stock' },
+            { key: 'costo_unitario', label: 'Costo' },
+            { key: 'precio_venta', label: 'Precio Venta' },
+          ])}><Download className="h-4 w-4 mr-1" />Exportar</Button>
+          <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nuevo Ítem</Button>
+        </div>
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">

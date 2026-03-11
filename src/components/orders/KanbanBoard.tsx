@@ -33,6 +33,13 @@ export function KanbanBoard() {
         tiempo_esperado_dias: p.laboratorios?.tiempo_promedio_entrega || 3,
         es_garantia: p.es_garantia || false,
         es_reproceso: p.es_reproceso || false,
+        precio_venta: p.precio_venta || 0,
+        costo_laboratorio: p.costo_laboratorio || 0,
+        costo_montura: p.costo_montura || 0,
+        costo_lente: p.costo_lente || 0,
+        costo_insumos: p.costo_insumos || 0,
+        comision_financiera: p.comision_financiera || 0,
+        utilidad_calculada: p.utilidad_calculada || 0,
       }));
     },
   });

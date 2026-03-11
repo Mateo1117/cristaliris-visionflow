@@ -11,7 +11,8 @@ import type { OrdenProducto } from '@/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Search, Filter, ArrowUpDown, Clock, AlertTriangle } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Clock, AlertTriangle, Download } from 'lucide-react';
+import { exportToCSV } from '@/lib/export-csv';
 
 const estadoColor: Record<string, string> = {
   pedido_creado: 'bg-muted text-muted-foreground',

@@ -68,16 +68,39 @@ export default function QualityControl() {
     toast.success('Producto aprobado — listo para entrega');
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     if (!selected) return;
     if (!observaciones.trim()) { toast.error('Debe ingresar observaciones para rechazar'); return; }
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Create warranty record for rejected product
+    const cicloActual = (selected.ciclo_garantia || 0) + 1;
+    const subcodigo = `${selected.orden_id.slice(0, 8)}-G${cicloActual}`;
+    
+    const { error: errGarantia } = await supabase.from('garantias').insert({
+      orden_producto_id: selected.id,
+      motivo: observaciones,
+      subcodigo,
+      ciclo: cicloActual,
+      laboratorio_id: selected.laboratorio_id,
+      estado: 'solicitada',
+      observaciones: `Rechazado en control de calidad: ${observaciones}`,
+    });
+    if (errGarantia) { toast.error('Error creando garantía: ' + errGarantia.message); return; }
+
+    // Mark product as warranty + update cycle
+    await supabase.from('orden_productos')
+      .update({ es_garantia: true, ciclo_garantia: cicloActual, garantia_codigo: subcodigo })
+      .eq('id', selected.id);
+
     updateState.mutate({
       id: selected.id,
       newState: 'pedido_creado',
       oldState: selected.estado_actual,
-      obs: `RECHAZADO: ${observaciones}`,
+      obs: `RECHAZADO → Garantía ${subcodigo}: ${observaciones}`,
     });
-    toast.error('Producto rechazado — devuelto a pedido creado');
+    toast.error('Producto rechazado — garantía creada para seguimiento');
   };
 
   const pendientes = productos.filter((p: any) => p.estado_actual === 'recibido_optica');

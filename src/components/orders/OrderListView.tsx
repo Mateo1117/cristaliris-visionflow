@@ -11,7 +11,8 @@ import type { OrdenProducto } from '@/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Search, Filter, ArrowUpDown, Clock, AlertTriangle } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Clock, AlertTriangle, Download } from 'lucide-react';
+import { exportToCSV } from '@/lib/export-csv';
 
 const estadoColor: Record<string, string> = {
   pedido_creado: 'bg-muted text-muted-foreground',
@@ -132,7 +133,7 @@ export function OrderListView() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-3 mb-4 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -163,6 +164,19 @@ export function OrderListView() {
             <SelectItem value="insumo">Insumo</SelectItem>
           </SelectContent>
         </Select>
+        <Button variant="outline" size="sm" onClick={() => exportToCSV(filtered, 'ordenes', [
+          { key: 'fecha_creacion', label: 'Fecha' },
+          { key: 'paciente_nombre', label: 'Paciente' },
+          { key: 'descripcion', label: 'Producto' },
+          { key: 'tipo_producto', label: 'Tipo' },
+          { key: 'laboratorio_nombre', label: 'Laboratorio' },
+          { key: 'estado_actual', label: 'Estado' },
+          { key: 'dias_en_estado', label: 'Días' },
+          { key: 'precio_venta', label: 'Precio Venta' },
+          { key: 'utilidad_calculada', label: 'Utilidad' },
+        ])}>
+          <Download className="h-3.5 w-3.5 mr-1" />Exportar
+        </Button>
       </div>
 
       {/* Table */}

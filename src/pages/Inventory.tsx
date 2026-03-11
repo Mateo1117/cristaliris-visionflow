@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Search, AlertTriangle, QrCode } from 'lucide-react';
+import { Plus, Search, AlertTriangle, QrCode, Download } from 'lucide-react';
+import { exportToCSV } from '@/lib/export-csv';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -86,7 +87,19 @@ export default function Inventory() {
   return (
     <AppLayout>
       <PageHeader title="Inventario" description="Gestión de monturas, lentes e insumos por sede">
-        <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nuevo Ítem</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportToCSV(filtered, 'inventario', [
+            { key: 'codigo_referencia', label: 'Código' },
+            { key: 'descripcion', label: 'Descripción' },
+            { key: 'tipo', label: 'Tipo' },
+            { key: 'marca', label: 'Marca' },
+            { key: 'modelo', label: 'Modelo' },
+            { key: 'cantidad_disponible', label: 'Stock' },
+            { key: 'costo_unitario', label: 'Costo' },
+            { key: 'precio_venta', label: 'Precio Venta' },
+          ])}><Download className="h-4 w-4 mr-1" />Exportar</Button>
+          <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nuevo Ítem</Button>
+        </div>
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">

@@ -706,6 +706,60 @@ export type Database = {
         }
         Relationships: []
       }
+      movimientos_inventario: {
+        Row: {
+          cantidad: number
+          cantidad_anterior: number
+          cantidad_nueva: number
+          created_at: string
+          id: string
+          inventario_id: string
+          motivo: string | null
+          orden_producto_id: string | null
+          tipo_movimiento: string
+          usuario_id: string | null
+        }
+        Insert: {
+          cantidad: number
+          cantidad_anterior: number
+          cantidad_nueva: number
+          created_at?: string
+          id?: string
+          inventario_id: string
+          motivo?: string | null
+          orden_producto_id?: string | null
+          tipo_movimiento: string
+          usuario_id?: string | null
+        }
+        Update: {
+          cantidad?: number
+          cantidad_anterior?: number
+          cantidad_nueva?: number
+          created_at?: string
+          id?: string
+          inventario_id?: string
+          motivo?: string | null
+          orden_producto_id?: string | null
+          tipo_movimiento?: string
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "movimientos_inventario_inventario_id_fkey"
+            columns: ["inventario_id"]
+            isOneToOne: false
+            referencedRelation: "inventario"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "movimientos_inventario_orden_producto_id_fkey"
+            columns: ["orden_producto_id"]
+            isOneToOne: false
+            referencedRelation: "orden_productos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orden_productos: {
         Row: {
           ciclo_garantia: number | null

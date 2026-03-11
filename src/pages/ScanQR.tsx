@@ -52,7 +52,8 @@ export default function ScanQR() {
         () => {},
       );
     } catch (err: any) {
-      toast.error('Error al acceder a la cámara: ' + err.message);
+      const msg = typeof err === 'string' ? err : err?.message || 'No se pudo acceder a la cámara. Verifique los permisos.';
+      toast.error(msg);
       setScanning(false);
     }
   };

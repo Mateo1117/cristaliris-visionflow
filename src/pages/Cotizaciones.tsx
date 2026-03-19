@@ -275,12 +275,15 @@ export default function Cotizaciones() {
                   <TableCell className="font-medium">${(c.total_estimado || 0).toLocaleString('es-CO')}</TableCell>
                   <TableCell className="text-sm">{c.fecha_vencimiento ? new Date(c.fecha_vencimiento).toLocaleDateString('es-CO') : '—'}</TableCell>
                   <TableCell><Badge className={`text-[10px] ${estadoColor[c.estado] || ''}`}>{c.estado}</Badge></TableCell>
-                  <TableCell>
+                  <TableCell className="flex gap-1">
                     {c.estado === 'vigente' && (
                       <Button size="sm" variant="outline" onClick={() => setShowConvert(c)}>
                         <ArrowRightCircle className="h-3.5 w-3.5 mr-1" />Convertir
                       </Button>
                     )}
+                    <Button size="sm" variant="ghost" onClick={() => handleDuplicate(c)} title="Duplicar cotización">
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               );

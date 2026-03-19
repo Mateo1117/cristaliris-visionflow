@@ -250,6 +250,7 @@ export default function Orders() {
                   <SelectContent>
                     <SelectItem value="contado">Contado</SelectItem>
                     <SelectItem value="nomina">Nómina</SelectItem>
+                    <SelectItem value="cuotas">Cuotas</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

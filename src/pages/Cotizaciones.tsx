@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
-import { Plus, FileText, TrendingUp, ArrowRightCircle, Trash2, PercentCircle, Package } from 'lucide-react';
+import { Plus, FileText, TrendingUp, ArrowRightCircle, Trash2, PercentCircle, Package, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -200,6 +200,14 @@ export default function Cotizaciones() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const handleDuplicate = (cotizacion: any) => {
+    const cotItems = (cotizacion.items || []) as CotizacionItem[];
+    setSelectedPaciente(cotizacion.paciente_id);
+    setItems(cotItems.length > 0 ? cotItems.map(it => ({ ...it })) : [{ descripcion: '', cantidad: 1, precio_unitario: 0, tipo_producto: 'lente' }]);
+    setShowForm(true);
+    toast.info('Cotización duplicada — modifique y guarde');
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedPaciente) { toast.error('Seleccione un paciente'); return; }
@@ -275,12 +283,15 @@ export default function Cotizaciones() {
                   <TableCell className="font-medium">${(c.total_estimado || 0).toLocaleString('es-CO')}</TableCell>
                   <TableCell className="text-sm">{c.fecha_vencimiento ? new Date(c.fecha_vencimiento).toLocaleDateString('es-CO') : '—'}</TableCell>
                   <TableCell><Badge className={`text-[10px] ${estadoColor[c.estado] || ''}`}>{c.estado}</Badge></TableCell>
-                  <TableCell>
+                  <TableCell className="flex gap-1">
                     {c.estado === 'vigente' && (
                       <Button size="sm" variant="outline" onClick={() => setShowConvert(c)}>
                         <ArrowRightCircle className="h-3.5 w-3.5 mr-1" />Convertir
                       </Button>
                     )}
+                    <Button size="sm" variant="ghost" onClick={() => handleDuplicate(c)} title="Duplicar cotización">
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               );

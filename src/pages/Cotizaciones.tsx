@@ -200,6 +200,14 @@ export default function Cotizaciones() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const handleDuplicate = (cotizacion: any) => {
+    const cotItems = (cotizacion.items || []) as CotizacionItem[];
+    setSelectedPaciente(cotizacion.paciente_id);
+    setItems(cotItems.length > 0 ? cotItems.map(it => ({ ...it })) : [{ descripcion: '', cantidad: 1, precio_unitario: 0, tipo_producto: 'lente' }]);
+    setShowForm(true);
+    toast.info('Cotización duplicada — modifique y guarde');
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedPaciente) { toast.error('Seleccione un paciente'); return; }

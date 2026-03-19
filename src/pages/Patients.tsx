@@ -8,11 +8,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { PatientSearch } from '@/components/patients/PatientSearch';
 import { PatientForm } from '@/components/patients/PatientForm';
 import { PatientTable } from '@/components/patients/PatientTable';
+import { PatientHistoryDialog } from '@/components/patients/PatientHistoryDialog';
 import { toast } from 'sonner';
 
 export default function Patients() {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<any>(null);
+  const [historyPatientId, setHistoryPatientId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: pacientes = [], isLoading } = useQuery({
@@ -56,16 +59,75 @@ export default function Patients() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const updatePaciente = useMutation({
+    mutationFn: async (formData: Record<string, any>) => {
+      const { id, ...rest } = formData;
+      const { error } = await supabase.from('pacientes').update({
+        tipo_documento: rest.tipo_documento,
+        numero_documento: rest.numero_documento,
+        nombres: rest.nombres,
+        apellidos: rest.apellidos,
+        fecha_nacimiento: rest.fecha_nacimiento || null,
+        genero: rest.genero || null,
+        telefono: rest.telefono,
+        email: rest.email,
+        direccion: rest.direccion,
+        ciudad: rest.ciudad || 'Bogotá',
+        departamento: rest.departamento || 'Cundinamarca',
+        modalidad_pago: rest.modalidad_pago || 'contado',
+        es_fuera_bogota: rest.ciudad !== 'Bogotá',
+        empresa_id: rest.empresa_id || null,
+        referido_por: rest.referido_por || null,
+      }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+      setEditingPatient(null);
+      toast.success('Paciente actualizado exitosamente');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const handleEdit = (paciente: any) => {
+    setEditingPatient(paciente);
+  };
+
+  const handleFormSubmit = (data: Record<string, any>) => {
+    if (data.id) {
+      updatePaciente.mutate(data);
+    } else {
+      createPaciente.mutate(data);
+    }
+  };
+
   return (
     <AppLayout>
       <PageHeader title="Pacientes" description="Gestión de pacientes registrados">
-        <Button onClick={() => setShowForm(true)}>
+        <Button onClick={() => { setEditingPatient(null); setShowForm(true); }}>
           <Plus className="h-4 w-4 mr-1" />Nuevo Paciente
         </Button>
       </PageHeader>
       <PatientSearch value={search} onChange={setSearch} />
-      <PatientTable searchQuery={search} pacientes={pacientes} isLoading={isLoading} />
-      <PatientForm open={showForm} onOpenChange={setShowForm} onSubmit={(data) => createPaciente.mutate(data)} isPending={createPaciente.isPending} />
+      <PatientTable
+        searchQuery={search}
+        pacientes={pacientes}
+        isLoading={isLoading}
+        onEdit={handleEdit}
+        onViewHistory={(id) => setHistoryPatientId(id)}
+      />
+      <PatientForm
+        open={showForm || !!editingPatient}
+        onOpenChange={(o) => { if (!o) { setShowForm(false); setEditingPatient(null); } }}
+        onSubmit={handleFormSubmit}
+        isPending={createPaciente.isPending || updatePaciente.isPending}
+        initialData={editingPatient}
+      />
+      <PatientHistoryDialog
+        pacienteId={historyPatientId}
+        open={!!historyPatientId}
+        onOpenChange={(o) => { if (!o) setHistoryPatientId(null); }}
+      />
     </AppLayout>
   );
 }

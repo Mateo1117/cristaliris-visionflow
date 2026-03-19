@@ -173,22 +173,16 @@ export default function ClinicalRecords() {
               </div>
 
               {/* Anamnesis & Antecedentes */}
-              {(viewRecord.anamnesis || viewRecord.antecedentes) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {viewRecord.anamnesis && (
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Motivo de Consulta</p>
-                      <p className="text-sm">{viewRecord.anamnesis}</p>
-                    </div>
-                  )}
-                  {viewRecord.antecedentes && (
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Antecedentes</p>
-                      <p className="text-sm">{viewRecord.antecedentes}</p>
-                    </div>
-                  )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Motivo de Consulta / Anamnesis</p>
+                  <p className="text-sm">{viewRecord.anamnesis || '—'}</p>
                 </div>
-              )}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Antecedentes</p>
+                  <p className="text-sm">{viewRecord.antecedentes || '—'}</p>
+                </div>
+              </div>
 
               <Separator />
 

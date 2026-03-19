@@ -129,6 +129,7 @@ export default function Billing() {
       <Tabs defaultValue="cartera">
         <TabsList className="mb-4">
           <TabsTrigger value="cartera">Cartera</TabsTrigger>
+          <TabsTrigger value="nomina">Deuda Nómina</TabsTrigger>
           <TabsTrigger value="abonos">Abonos Recientes</TabsTrigger>
           <TabsTrigger value="caja">Caja Diaria</TabsTrigger>
         </TabsList>

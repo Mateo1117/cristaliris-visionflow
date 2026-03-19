@@ -12,6 +12,7 @@ interface PatientTableProps {
   isLoading: boolean;
   onEdit?: (paciente: any) => void;
   onViewHistory?: (pacienteId: string) => void;
+  onViewDetail?: (paciente: any) => void;
 }
 
 export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onViewHistory }: PatientTableProps) {

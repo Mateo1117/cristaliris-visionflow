@@ -1,6 +1,7 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { KanbanBoard } from '@/components/orders/KanbanBoard';
+import { AlertasProduccion } from '@/components/dashboard/AlertasProduccion';
 import { OrderListView } from '@/components/orders/OrderListView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -161,7 +162,9 @@ export default function Orders() {
         <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" />Nueva Orden</Button>
       </PageHeader>
 
-      <Tabs defaultValue="kanban" className="space-y-4">
+      <AlertasProduccion />
+
+      <Tabs defaultValue="kanban" className="space-y-4 mt-4">
         <TabsList>
           <TabsTrigger value="kanban" className="gap-1.5"><Kanban className="h-4 w-4" />Kanban</TabsTrigger>
           <TabsTrigger value="lista" className="gap-1.5"><List className="h-4 w-4" />Lista</TabsTrigger>

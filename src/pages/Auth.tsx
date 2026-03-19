@@ -85,6 +85,15 @@ export default function Auth() {
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? 'Ingresando...' : 'Ingresar'}
                 </Button>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-sm text-primary hover:underline"
+                    onClick={() => setShowForgot(true)}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
               </form>
             </TabsContent>
 

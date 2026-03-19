@@ -104,6 +104,10 @@ export default function Reports() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="mt-4">
+        <DeudaEmpresasCard />
+      </div>
     </AppLayout>
   );
 }

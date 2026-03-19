@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import { Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Dashboard from "./pages/Dashboard";
@@ -40,7 +41,7 @@ const App = () => (
           <Route path="/pacientes" element={<ProtectedRoute><Patients /></ProtectedRoute>} />
           <Route path="/agenda" element={<ProtectedRoute><Agenda /></ProtectedRoute>} />
           <Route path="/ordenes" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
-          <Route path="/historia-clinica" element={<ProtectedRoute><ClinicalRecords /></ProtectedRoute>} />
+          <Route path="/historia-clinica" element={<Navigate to="/pacientes" replace />} />
           <Route path="/inventario" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
           <Route path="/cartera" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
           <Route path="/cotizaciones" element={<ProtectedRoute><Cotizaciones /></ProtectedRoute>} />

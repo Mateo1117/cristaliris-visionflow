@@ -8,14 +8,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { PatientSearch } from '@/components/patients/PatientSearch';
 import { PatientForm } from '@/components/patients/PatientForm';
 import { PatientTable } from '@/components/patients/PatientTable';
-import { PatientHistoryDialog } from '@/components/patients/PatientHistoryDialog';
+import { PatientDetailDialog } from '@/components/patients/PatientDetailDialog';
 import { toast } from 'sonner';
 
 export default function Patients() {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingPatient, setEditingPatient] = useState<any>(null);
-  const [historyPatientId, setHistoryPatientId] = useState<string | null>(null);
+  const [detailPatient, setDetailPatient] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: pacientes = [], isLoading } = useQuery({
@@ -89,16 +89,9 @@ export default function Patients() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const handleEdit = (paciente: any) => {
-    setEditingPatient(paciente);
-  };
-
   const handleFormSubmit = (data: Record<string, any>) => {
-    if (data.id) {
-      updatePaciente.mutate(data);
-    } else {
-      createPaciente.mutate(data);
-    }
+    if (data.id) updatePaciente.mutate(data);
+    else createPaciente.mutate(data);
   };
 
   return (
@@ -113,8 +106,8 @@ export default function Patients() {
         searchQuery={search}
         pacientes={pacientes}
         isLoading={isLoading}
-        onEdit={handleEdit}
-        onViewHistory={(id) => setHistoryPatientId(id)}
+        onEdit={(p) => setEditingPatient(p)}
+        onViewDetail={(p) => setDetailPatient(p)}
       />
       <PatientForm
         open={showForm || !!editingPatient}
@@ -123,10 +116,10 @@ export default function Patients() {
         isPending={createPaciente.isPending || updatePaciente.isPending}
         initialData={editingPatient}
       />
-      <PatientHistoryDialog
-        pacienteId={historyPatientId}
-        open={!!historyPatientId}
-        onOpenChange={(o) => { if (!o) setHistoryPatientId(null); }}
+      <PatientDetailDialog
+        paciente={detailPatient}
+        open={!!detailPatient}
+        onOpenChange={(o) => { if (!o) setDetailPatient(null); }}
       />
     </AppLayout>
   );

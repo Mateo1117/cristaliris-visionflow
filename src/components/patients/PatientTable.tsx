@@ -12,9 +12,10 @@ interface PatientTableProps {
   isLoading: boolean;
   onEdit?: (paciente: any) => void;
   onViewHistory?: (pacienteId: string) => void;
+  onViewDetail?: (paciente: any) => void;
 }
 
-export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onViewHistory }: PatientTableProps) {
+export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onViewHistory, onViewDetail }: PatientTableProps) {
   const q = searchQuery.toLowerCase();
   const filtered = pacientes.filter((p: any) =>
     p.numero_documento?.includes(q) ||
@@ -44,7 +45,7 @@ export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onView
         </TableHeader>
         <TableBody>
           {filtered.map((p: any) => (
-            <TableRow key={p.id} className="hover:bg-muted/50">
+            <TableRow key={p.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => onViewDetail?.(p)}>
               <TableCell className="font-medium">{p.tipo_documento} {p.numero_documento}</TableCell>
               <TableCell>{p.nombres} {p.apellidos}</TableCell>
               <TableCell className="hidden md:table-cell">{p.telefono}</TableCell>

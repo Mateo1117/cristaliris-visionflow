@@ -165,11 +165,18 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                             {h.codigo_cie10 && <Badge variant="secondary" className="text-[10px]">CIE-10: {h.codigo_cie10}</Badge>}
                           </div>
                         </div>
-                        {h.diagnostico && <p className="text-sm mb-2">{h.diagnostico}</p>}
+                        {h.anamnesis && <p className="text-xs text-muted-foreground mb-1"><span className="font-semibold">Anamnesis:</span> {h.anamnesis.substring(0, 100)}{h.anamnesis.length > 100 ? '…' : ''}</p>}
+                        {h.diagnostico && <p className="text-sm font-medium mb-2">{h.diagnostico}</p>}
                         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                           <span><Eye className="h-3 w-3 inline mr-1" />OD: {h.formula_od_esfera ?? '—'}/{h.formula_od_cilindro ?? '—'}/{h.formula_od_eje ?? '—'}° Add:{h.formula_od_adicion ?? '—'}</span>
                           <span><Eye className="h-3 w-3 inline mr-1" />OI: {h.formula_oi_esfera ?? '—'}/{h.formula_oi_cilindro ?? '—'}/{h.formula_oi_eje ?? '—'}° Add:{h.formula_oi_adicion ?? '—'}</span>
                         </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground mt-1">
+                          <span>DP: {h.distancia_pupilar ?? '—'} mm</span>
+                          <span>Alt OD: {h.altura_pupilar_od ?? '—'} mm</span>
+                          <span>Alt OI: {h.altura_pupilar_oi ?? '—'} mm</span>
+                        </div>
+                        {h.plan_manejo && <p className="text-xs text-muted-foreground mt-1"><span className="font-semibold">Plan:</span> {h.plan_manejo.substring(0, 80)}{h.plan_manejo.length > 80 ? '…' : ''}</p>}
                       </CardContent>
                     </Card>
                   ))}

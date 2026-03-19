@@ -769,6 +769,44 @@ export type Database = {
           },
         ]
       }
+      notificaciones: {
+        Row: {
+          created_at: string
+          detalle: string | null
+          id: string
+          leida: boolean
+          orden_producto_id: string | null
+          tipo: string
+          titulo: string
+        }
+        Insert: {
+          created_at?: string
+          detalle?: string | null
+          id?: string
+          leida?: boolean
+          orden_producto_id?: string | null
+          tipo?: string
+          titulo: string
+        }
+        Update: {
+          created_at?: string
+          detalle?: string | null
+          id?: string
+          leida?: boolean
+          orden_producto_id?: string | null
+          tipo?: string
+          titulo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notificaciones_orden_producto_id_fkey"
+            columns: ["orden_producto_id"]
+            isOneToOne: false
+            referencedRelation: "orden_productos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orden_productos: {
         Row: {
           ciclo_garantia: number | null

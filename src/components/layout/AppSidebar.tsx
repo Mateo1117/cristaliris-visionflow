@@ -16,7 +16,6 @@ const mainItems = [
   { title: 'Agenda', url: '/agenda', icon: Calendar },
   { title: 'Cotizaciones', url: '/cotizaciones', icon: FileText },
   { title: 'Órdenes', url: '/ordenes', icon: ClipboardList },
-  { title: 'Historia Clínica', url: '/historia-clinica', icon: Stethoscope },
   { title: 'Control Calidad', url: '/control-calidad', icon: CheckSquare },
 ];
 

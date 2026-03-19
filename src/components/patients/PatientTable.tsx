@@ -15,7 +15,7 @@ interface PatientTableProps {
   onViewDetail?: (paciente: any) => void;
 }
 
-export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onViewHistory }: PatientTableProps) {
+export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onViewHistory, onViewDetail }: PatientTableProps) {
   const q = searchQuery.toLowerCase();
   const filtered = pacientes.filter((p: any) =>
     p.numero_documento?.includes(q) ||

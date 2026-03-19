@@ -1,6 +1,7 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DeudaEmpresasCard } from '@/components/reports/DeudaEmpresasCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -128,6 +129,7 @@ export default function Billing() {
       <Tabs defaultValue="cartera">
         <TabsList className="mb-4">
           <TabsTrigger value="cartera">Cartera</TabsTrigger>
+          <TabsTrigger value="nomina">Deuda Nómina</TabsTrigger>
           <TabsTrigger value="abonos">Abonos Recientes</TabsTrigger>
           <TabsTrigger value="caja">Caja Diaria</TabsTrigger>
         </TabsList>
@@ -169,6 +171,10 @@ export default function Billing() {
               </TableBody>
             </Table>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="nomina">
+          <DeudaEmpresasCard />
         </TabsContent>
 
         <TabsContent value="abonos">

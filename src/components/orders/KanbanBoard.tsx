@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ESTADOS_PRODUCTO } from '@/types';
 import { KanbanColumn } from './KanbanColumn';
 import { OrderDetailDialog } from './OrderDetailDialog';
+import { ReadyForDeliveryDialog } from './ReadyForDeliveryDialog';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +26,7 @@ function getTiempoEsperado(tipoLenteTiempo: string | null, labDefault: number | 
 
 export function KanbanBoard() {
   const [selectedItem, setSelectedItem] = useState<OrdenProducto | null>(null);
+  const [pendingDelivery, setPendingDelivery] = useState<{ id: string; oldState: string } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: productos = [], isLoading } = useQuery({
@@ -84,7 +86,19 @@ export function KanbanBoard() {
   });
 
   const handleDrop = (itemId: string, oldState: string, newState: EstadoProducto) => {
+    // Intercept "listo_entrega" to show notification dialog
+    if (newState === 'listo_entrega') {
+      setPendingDelivery({ id: itemId, oldState });
+      return;
+    }
     moveItem.mutate({ id: itemId, oldState, newState });
+  };
+
+  const handleConfirmDelivery = () => {
+    if (pendingDelivery) {
+      moveItem.mutate({ id: pendingDelivery.id, oldState: pendingDelivery.oldState, newState: 'listo_entrega' });
+      setPendingDelivery(null);
+    }
   };
 
   if (isLoading) {
@@ -112,6 +126,12 @@ export function KanbanBoard() {
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
       <OrderDetailDialog item={selectedItem} open={!!selectedItem} onOpenChange={(open) => { if (!open) setSelectedItem(null); }} />
+      <ReadyForDeliveryDialog
+        open={!!pendingDelivery}
+        onOpenChange={(open) => { if (!open) setPendingDelivery(null); }}
+        ordenProductoId={pendingDelivery?.id || null}
+        onConfirm={handleConfirmDelivery}
+      />
     </>
   );
 }

@@ -67,6 +67,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
         codigo_cie10: formData.codigo_cie10,
         plan_manejo: formData.plan_manejo,
         observaciones: formData.observaciones,
+        firma_optometra: formData.firma_optometra || null,
       });
       if (error) throw error;
     },
@@ -387,6 +388,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                 </div>
                 <div className="space-y-2"><Label>Plan de Manejo</Label><Textarea name="plan_manejo" placeholder="Plan de manejo y recomendaciones..." rows={3} /></div>
                 <div className="space-y-2"><Label>Observaciones</Label><Textarea name="observaciones" placeholder="Observaciones adicionales..." rows={2} /></div>
+                <div className="space-y-2"><Label>Firma Optómetra</Label><Input name="firma_optometra" placeholder="Nombre completo y T.P. del optómetra" /></div>
               </TabsContent>
             </Tabs>
 

@@ -1,7 +1,9 @@
+import { useQuery } from '@tanstack/react-query';
 import type { OrdenProducto } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, AlertTriangle, ShieldCheck, RotateCcw } from 'lucide-react';
+import { Clock, AlertTriangle, ShieldCheck, RotateCcw, Camera, QrCode } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 function getTimeColor(dias: number, esperado: number) {
   const ratio = dias / esperado;
@@ -13,6 +15,19 @@ function getTimeColor(dias: number, esperado: number) {
 export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: () => void }) {
   const timeColor = getTimeColor(item.dias_en_estado, item.tiempo_esperado_dias);
   const excedido = item.dias_en_estado >= item.tiempo_esperado_dias;
+  const isPedidoCreado = item.estado_actual === 'pedido_creado';
+
+  // Check if photos exist for pedido_creado cards
+  const { data: fotoCount = 0 } = useQuery({
+    queryKey: ['orden-fotos-count', item.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.storage.from('orden-fotos').list(item.id);
+      if (error) return 0;
+      return data.length;
+    },
+    enabled: isPedidoCreado,
+    staleTime: 30000,
+  });
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/json', JSON.stringify({ id: item.id, estado_actual: item.estado_actual }));
@@ -35,6 +50,20 @@ export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: ()
           </div>
         </div>
         <p className="text-xs text-muted-foreground mb-2">{item.descripcion}</p>
+
+        {/* Pedido Creado: show photo & QR indicators */}
+        {isPedidoCreado && (
+          <div className="flex items-center gap-2 mb-2">
+            <Badge variant={fotoCount > 0 ? 'default' : 'outline'} className="text-[10px] h-5 gap-1">
+              <Camera className="h-3 w-3" />
+              {fotoCount > 0 ? `${fotoCount} foto${fotoCount > 1 ? 's' : ''}` : 'Sin foto'}
+            </Badge>
+            <Badge variant="outline" className="text-[10px] h-5 gap-1">
+              <QrCode className="h-3 w-3" />QR
+            </Badge>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <Badge variant="outline" className="text-[10px] h-5">{item.laboratorio_nombre}</Badge>
           <div className={`flex items-center gap-1 text-[10px] font-medium ${timeColor}`}>

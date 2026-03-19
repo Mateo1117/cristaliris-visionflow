@@ -16,11 +16,10 @@ import { exportToCSV } from '@/lib/export-csv';
 
 const estadoColor: Record<string, string> = {
   pedido_creado: 'bg-muted text-muted-foreground',
+  alistamiento: 'bg-accent/10 text-accent-foreground',
   enviado_laboratorio: 'bg-primary/10 text-primary',
-  recibido_laboratorio: 'bg-primary/15 text-primary',
   en_produccion: 'bg-warning/10 text-warning',
   producido: 'bg-info/10 text-info',
-  en_transito: 'bg-accent/10 text-accent',
   recibido_optica: 'bg-secondary/10 text-secondary',
   control_calidad: 'bg-warning/10 text-warning',
   listo_entrega: 'bg-success/10 text-success',

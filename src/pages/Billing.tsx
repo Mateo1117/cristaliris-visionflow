@@ -173,6 +173,10 @@ export default function Billing() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="nomina">
+          <DeudaEmpresasCard />
+        </TabsContent>
+
         <TabsContent value="abonos">
           <Card>
             <Table>

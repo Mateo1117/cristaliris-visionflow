@@ -1,0 +1,1 @@
+ALTER TYPE public.estado_producto ADD VALUE IF NOT EXISTS 'alistamiento';

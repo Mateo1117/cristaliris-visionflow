@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, FileText, Eye } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { Plus, Search, Eye } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +21,7 @@ export default function ClinicalRecords() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedPaciente, setSelectedPaciente] = useState<string | null>(null);
+  const [viewRecord, setViewRecord] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: historias = [], isLoading } = useQuery({
@@ -27,7 +29,7 @@ export default function ClinicalRecords() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('historias_clinicas')
-        .select('*, pacientes(nombres, apellidos, numero_documento)')
+        .select('*, pacientes(nombres, apellidos, numero_documento, tipo_documento, telefono, email, fecha_nacimiento)')
         .order('fecha_consulta', { ascending: false });
       if (error) throw error;
       return data;
@@ -80,6 +82,7 @@ export default function ClinicalRecords() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['historias'] });
       setShowForm(false);
+      setSelectedPaciente(null);
       toast.success('Historia clínica creada exitosamente');
     },
     onError: (e: any) => toast.error(e.message),
@@ -131,7 +134,7 @@ export default function ClinicalRecords() {
             ) : filtered.length === 0 ? (
               <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No hay historias clínicas{search ? ' que coincidan' : ''}</TableCell></TableRow>
             ) : filtered.map((h: any) => (
-              <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50">
+              <TableRow key={h.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setViewRecord(h)}>
                 <TableCell className="text-sm">{new Date(h.fecha_consulta).toLocaleDateString('es-CO')}</TableCell>
                 <TableCell className="font-medium">{h.pacientes?.nombres} {h.pacientes?.apellidos}</TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground truncate max-w-[200px]">{h.diagnostico || '—'}</TableCell>
@@ -144,8 +147,132 @@ export default function ClinicalRecords() {
         </Table>
       </Card>
 
+      {/* View Record Dialog */}
+      <Dialog open={!!viewRecord} onOpenChange={(o) => { if (!o) setViewRecord(null); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5 text-primary" />
+              Historia Clínica
+            </DialogTitle>
+          </DialogHeader>
+          {viewRecord && (
+            <div className="space-y-5">
+              {/* Patient & Date */}
+              <div className="rounded-lg bg-muted/50 p-4 space-y-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-lg">{viewRecord.pacientes?.nombres} {viewRecord.pacientes?.apellidos}</p>
+                  <Badge variant="outline">{new Date(viewRecord.fecha_consulta).toLocaleDateString('es-CO')}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{viewRecord.pacientes?.tipo_documento} {viewRecord.pacientes?.numero_documento}</p>
+                <div className="flex gap-4 text-xs text-muted-foreground mt-1">
+                  {viewRecord.pacientes?.telefono && <span>Tel: {viewRecord.pacientes.telefono}</span>}
+                  {viewRecord.pacientes?.email && <span>Email: {viewRecord.pacientes.email}</span>}
+                  {viewRecord.pacientes?.fecha_nacimiento && <span>Nac: {new Date(viewRecord.pacientes.fecha_nacimiento).toLocaleDateString('es-CO')}</span>}
+                </div>
+              </div>
+
+              {/* Anamnesis & Antecedentes */}
+              {(viewRecord.anamnesis || viewRecord.antecedentes) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {viewRecord.anamnesis && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Motivo de Consulta</p>
+                      <p className="text-sm">{viewRecord.anamnesis}</p>
+                    </div>
+                  )}
+                  {viewRecord.antecedentes && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Antecedentes</p>
+                      <p className="text-sm">{viewRecord.antecedentes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Agudeza Visual */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" />OD — Ojo Derecho</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                      <div><span className="text-muted-foreground text-xs">AV:</span> {viewRecord.agudeza_visual_od || '—'}</div>
+                      <div><span className="text-muted-foreground text-xs">Refracción:</span> {viewRecord.refraccion_od || '—'}</div>
+                    </div>
+                    <Separator />
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                      <div><span className="text-muted-foreground text-xs">Esfera:</span> <span className="font-medium">{viewRecord.formula_od_esfera ?? '—'}</span></div>
+                      <div><span className="text-muted-foreground text-xs">Cilindro:</span> <span className="font-medium">{viewRecord.formula_od_cilindro ?? '—'}</span></div>
+                      <div><span className="text-muted-foreground text-xs">Eje:</span> <span className="font-medium">{viewRecord.formula_od_eje ?? '—'}°</span></div>
+                      <div><span className="text-muted-foreground text-xs">Adición:</span> <span className="font-medium">{viewRecord.formula_od_adicion ?? '—'}</span></div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" />OI — Ojo Izquierdo</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                      <div><span className="text-muted-foreground text-xs">AV:</span> {viewRecord.agudeza_visual_oi || '—'}</div>
+                      <div><span className="text-muted-foreground text-xs">Refracción:</span> {viewRecord.refraccion_oi || '—'}</div>
+                    </div>
+                    <Separator />
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                      <div><span className="text-muted-foreground text-xs">Esfera:</span> <span className="font-medium">{viewRecord.formula_oi_esfera ?? '—'}</span></div>
+                      <div><span className="text-muted-foreground text-xs">Cilindro:</span> <span className="font-medium">{viewRecord.formula_oi_cilindro ?? '—'}</span></div>
+                      <div><span className="text-muted-foreground text-xs">Eje:</span> <span className="font-medium">{viewRecord.formula_oi_eje ?? '—'}°</span></div>
+                      <div><span className="text-muted-foreground text-xs">Adición:</span> <span className="font-medium">{viewRecord.formula_oi_adicion ?? '—'}</span></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Medidas */}
+              <Card>
+                <CardContent className="pt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Medidas Pupilares</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div><span className="text-muted-foreground text-xs">DP Total:</span> <span className="font-medium">{viewRecord.distancia_pupilar ?? '—'} mm</span></div>
+                    <div><span className="text-muted-foreground text-xs">DP OD:</span> <span className="font-medium">{viewRecord.distancia_pupilar_od ?? '—'} mm</span></div>
+                    <div><span className="text-muted-foreground text-xs">DP OI:</span> <span className="font-medium">{viewRecord.distancia_pupilar_oi ?? '—'} mm</span></div>
+                    <div><span className="text-muted-foreground text-xs">Alt. Pupilar OD:</span> <span className="font-medium">{viewRecord.altura_pupilar_od ?? '—'} mm</span></div>
+                    <div><span className="text-muted-foreground text-xs">Alt. Pupilar OI:</span> <span className="font-medium">{viewRecord.altura_pupilar_oi ?? '—'} mm</span></div>
+                    <div><span className="text-muted-foreground text-xs">Dist. Vértice:</span> <span className="font-medium">{viewRecord.distancia_vertice ?? '—'} mm</span></div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Separator />
+
+              {/* Diagnóstico */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Diagnóstico</p>
+                  <p className="text-sm">{viewRecord.diagnostico || '—'}</p>
+                  {viewRecord.codigo_cie10 && <Badge variant="secondary" className="mt-1 text-[10px]">CIE-10: {viewRecord.codigo_cie10}</Badge>}
+                </div>
+                {viewRecord.plan_manejo && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Plan de Manejo</p>
+                    <p className="text-sm">{viewRecord.plan_manejo}</p>
+                  </div>
+                )}
+              </div>
+
+              {viewRecord.observaciones && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Observaciones</p>
+                  <p className="text-sm text-muted-foreground">{viewRecord.observaciones}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Form Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
+      <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) setSelectedPaciente(null); }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nueva Historia Clínica</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit}>

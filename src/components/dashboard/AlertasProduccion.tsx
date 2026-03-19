@@ -62,11 +62,11 @@ export function AlertasProduccion() {
     queryKey: ['alertas-produccion-lab'],
     queryFn: async () => {
       // Products currently in lab states
-      const labStates = ['enviado_laboratorio', 'recibido_laboratorio', 'en_produccion', 'producido'];
+      const labStates = ['enviado_laboratorio', 'recibido_laboratorio', 'en_produccion', 'producido'] as const;
       const { data, error } = await supabase
         .from('orden_productos')
         .select('id, orden_id, descripcion, tipo_producto, lente_tipo, tipo_lente_tiempo, estado_actual, fecha_envio_lab, created_at, laboratorios(nombre), ordenes(pacientes(nombres, apellidos))')
-        .in('estado_actual', labStates);
+        .in('estado_actual', [...labStates]);
       if (error) throw error;
 
       const now = new Date();

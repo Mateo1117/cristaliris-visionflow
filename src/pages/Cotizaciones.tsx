@@ -28,6 +28,7 @@ interface CotizacionItem {
 export default function Cotizaciones() {
   const [showForm, setShowForm] = useState(false);
   const [showConvert, setShowConvert] = useState<any>(null);
+  const [showDetail, setShowDetail] = useState<any>(null);
   const [selectedPaciente, setSelectedPaciente] = useState('');
   const [items, setItems] = useState<CotizacionItem[]>([
     { descripcion: '', cantidad: 1, precio_unitario: 0, tipo_producto: 'lente' },

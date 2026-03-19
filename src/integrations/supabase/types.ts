@@ -436,6 +436,9 @@ export type Database = {
           created_at: string
           diagnostico: string | null
           distancia_pupilar: number | null
+          distancia_pupilar_od: number | null
+          distancia_pupilar_oi: number | null
+          distancia_vertice: number | null
           fecha_consulta: string
           firma_optometra: string | null
           formula_od_adicion: number | null
@@ -466,6 +469,9 @@ export type Database = {
           created_at?: string
           diagnostico?: string | null
           distancia_pupilar?: number | null
+          distancia_pupilar_od?: number | null
+          distancia_pupilar_oi?: number | null
+          distancia_vertice?: number | null
           fecha_consulta?: string
           firma_optometra?: string | null
           formula_od_adicion?: number | null
@@ -496,6 +502,9 @@ export type Database = {
           created_at?: string
           diagnostico?: string | null
           distancia_pupilar?: number | null
+          distancia_pupilar_od?: number | null
+          distancia_pupilar_oi?: number | null
+          distancia_vertice?: number | null
           fecha_consulta?: string
           firma_optometra?: string | null
           formula_od_adicion?: number | null

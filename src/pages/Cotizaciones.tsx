@@ -277,7 +277,7 @@ export default function Cotizaciones() {
             ) : cotizaciones.map((c: any) => {
               const citems = (c.items || []) as CotizacionItem[];
               return (
-                <TableRow key={c.id}>
+                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setShowDetail(c)}>
                   <TableCell className="text-sm">{new Date(c.created_at).toLocaleDateString('es-CO')}</TableCell>
                   <TableCell className="font-medium">{c.pacientes?.nombres} {c.pacientes?.apellidos}</TableCell>
                   <TableCell className="text-sm">{citems.length} ítem(s)</TableCell>

@@ -1,1 +1,4 @@
 project_id = "pykxfjwrbppfqhwskzgz"
+
+[functions.check-lab-alerts]
+verify_jwt = false

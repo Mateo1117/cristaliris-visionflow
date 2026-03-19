@@ -1,6 +1,7 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { KanbanBoard } from '@/components/orders/KanbanBoard';
+import { AlertasProduccion } from '@/components/dashboard/AlertasProduccion';
 import { OrderListView } from '@/components/orders/OrderListView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

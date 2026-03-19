@@ -173,22 +173,16 @@ export default function ClinicalRecords() {
               </div>
 
               {/* Anamnesis & Antecedentes */}
-              {(viewRecord.anamnesis || viewRecord.antecedentes) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {viewRecord.anamnesis && (
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Motivo de Consulta</p>
-                      <p className="text-sm">{viewRecord.anamnesis}</p>
-                    </div>
-                  )}
-                  {viewRecord.antecedentes && (
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Antecedentes</p>
-                      <p className="text-sm">{viewRecord.antecedentes}</p>
-                    </div>
-                  )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Motivo de Consulta / Anamnesis</p>
+                  <p className="text-sm">{viewRecord.anamnesis || '—'}</p>
                 </div>
-              )}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Antecedentes</p>
+                  <p className="text-sm">{viewRecord.antecedentes || '—'}</p>
+                </div>
+              </div>
 
               <Separator />
 
@@ -250,22 +244,18 @@ export default function ClinicalRecords() {
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Diagnóstico</p>
                   <p className="text-sm">{viewRecord.diagnostico || '—'}</p>
-                  {viewRecord.codigo_cie10 && <Badge variant="secondary" className="mt-1 text-[10px]">CIE-10: {viewRecord.codigo_cie10}</Badge>}
+                  <Badge variant="secondary" className="mt-1 text-[10px]">CIE-10: {viewRecord.codigo_cie10 || '—'}</Badge>
                 </div>
-                {viewRecord.plan_manejo && (
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Plan de Manejo</p>
-                    <p className="text-sm">{viewRecord.plan_manejo}</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Plan de Manejo</p>
+                  <p className="text-sm">{viewRecord.plan_manejo || '—'}</p>
+                </div>
               </div>
 
-              {viewRecord.observaciones && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Observaciones</p>
-                  <p className="text-sm text-muted-foreground">{viewRecord.observaciones}</p>
-                </div>
-              )}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Observaciones</p>
+                <p className="text-sm text-muted-foreground">{viewRecord.observaciones || '—'}</p>
+              </div>
             </div>
           )}
         </DialogContent>

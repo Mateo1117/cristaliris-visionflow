@@ -387,6 +387,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                 </div>
                 <div className="space-y-2"><Label>Plan de Manejo</Label><Textarea name="plan_manejo" placeholder="Plan de manejo y recomendaciones..." rows={3} /></div>
                 <div className="space-y-2"><Label>Observaciones</Label><Textarea name="observaciones" placeholder="Observaciones adicionales..." rows={2} /></div>
+                <div className="space-y-2"><Label>Firma Optómetra</Label><Input name="firma_optometra" placeholder="Nombre completo y T.P. del optómetra" /></div>
               </TabsContent>
             </Tabs>
 

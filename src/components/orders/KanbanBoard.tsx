@@ -8,6 +8,21 @@ import { supabase } from '@/integrations/supabase/client';
 import type { EstadoProducto, OrdenProducto } from '@/types';
 import { toast } from 'sonner';
 
+function getTiempoEsperado(tipoLenteTiempo: string | null, labDefault: number | null): number {
+  switch (tipoLenteTiempo) {
+    case 'progresivo':
+    case 'talla':
+    case 'sol_formula':
+      return 3;
+    case 'terminado':
+      return 1;
+    case 'montura_3piezas':
+      return 2;
+    default:
+      return labDefault || 3;
+  }
+}
+
 export function KanbanBoard() {
   const [selectedItem, setSelectedItem] = useState<OrdenProducto | null>(null);
   const queryClient = useQueryClient();

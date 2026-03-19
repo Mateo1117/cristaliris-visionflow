@@ -278,6 +278,13 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Observaciones</p>
                 <p className="text-sm text-muted-foreground">{viewRecord.observaciones || '—'}</p>
               </div>
+
+              {viewRecord.firma_optometra && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Firma Optómetra</p>
+                  <p className="text-sm">{viewRecord.firma_optometra}</p>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

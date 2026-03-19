@@ -28,6 +28,7 @@ interface CotizacionItem {
 export default function Cotizaciones() {
   const [showForm, setShowForm] = useState(false);
   const [showConvert, setShowConvert] = useState<any>(null);
+  const [showDetail, setShowDetail] = useState<any>(null);
   const [selectedPaciente, setSelectedPaciente] = useState('');
   const [items, setItems] = useState<CotizacionItem[]>([
     { descripcion: '', cantidad: 1, precio_unitario: 0, tipo_producto: 'lente' },
@@ -276,22 +277,24 @@ export default function Cotizaciones() {
             ) : cotizaciones.map((c: any) => {
               const citems = (c.items || []) as CotizacionItem[];
               return (
-                <TableRow key={c.id}>
+                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setShowDetail(c)}>
                   <TableCell className="text-sm">{new Date(c.created_at).toLocaleDateString('es-CO')}</TableCell>
                   <TableCell className="font-medium">{c.pacientes?.nombres} {c.pacientes?.apellidos}</TableCell>
                   <TableCell className="text-sm">{citems.length} ítem(s)</TableCell>
                   <TableCell className="font-medium">${(c.total_estimado || 0).toLocaleString('es-CO')}</TableCell>
                   <TableCell className="text-sm">{c.fecha_vencimiento ? new Date(c.fecha_vencimiento).toLocaleDateString('es-CO') : '—'}</TableCell>
                   <TableCell><Badge className={`text-[10px] ${estadoColor[c.estado] || ''}`}>{c.estado}</Badge></TableCell>
-                  <TableCell className="flex gap-1">
-                    {c.estado === 'vigente' && (
-                      <Button size="sm" variant="outline" onClick={() => setShowConvert(c)}>
-                        <ArrowRightCircle className="h-3.5 w-3.5 mr-1" />Convertir
+                  <TableCell>
+                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                      {c.estado === 'vigente' && (
+                        <Button size="sm" variant="outline" onClick={() => setShowConvert(c)}>
+                          <ArrowRightCircle className="h-3.5 w-3.5 mr-1" />Convertir
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => handleDuplicate(c)} title="Duplicar cotización">
+                        <Copy className="h-3.5 w-3.5" />
                       </Button>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => handleDuplicate(c)} title="Duplicar cotización">
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -464,6 +467,86 @@ export default function Cotizaciones() {
                   <Button onClick={() => convertirAOrden.mutate(showConvert)} disabled={convertirAOrden.isPending}>
                     {convertirAOrden.isPending ? 'Convirtiendo...' : 'Confirmar Conversión'}
                   </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail Dialog */}
+      <Dialog open={!!showDetail} onOpenChange={(o) => { if (!o) setShowDetail(null); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" />Detalle de Cotización</DialogTitle></DialogHeader>
+          {showDetail && (() => {
+            const detailItems = (showDetail.items || []) as CotizacionItem[];
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Paciente</p>
+                    <p className="font-medium">{showDetail.pacientes?.nombres} {showDetail.pacientes?.apellidos}</p>
+                    <p className="text-xs text-muted-foreground">{showDetail.pacientes?.numero_documento}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Estado</p>
+                    <Badge className={`text-[10px] ${estadoColor[showDetail.estado] || ''}`}>{showDetail.estado}</Badge>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Fecha creación</p>
+                    <p className="font-medium">{new Date(showDetail.created_at).toLocaleDateString('es-CO')}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Vencimiento</p>
+                    <p className="font-medium">{showDetail.fecha_vencimiento ? new Date(showDetail.fecha_vencimiento).toLocaleDateString('es-CO') : '—'}</p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Ítems ({detailItems.length})</Label>
+                  {detailItems.map((it, i) => (
+                    <Card key={i} className="p-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{it.descripcion || 'Sin descripción'}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <Badge variant="outline" className="text-[10px]">{it.tipo_producto || 'lente'}</Badge>
+                            {it.inventario_id && (
+                              <Badge variant="secondary" className="text-[10px] gap-1">
+                                <Package className="h-3 w-3" />Inventario vinculado
+                              </Badge>
+                            )}
+                            {it.laboratorio_id && (() => {
+                              const lab = labs.find((l: any) => l.id === it.laboratorio_id);
+                              return lab ? <Badge variant="outline" className="text-[10px]">{lab.nombre}</Badge> : null;
+                            })()}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold">${(it.cantidad * it.precio_unitario).toLocaleString('es-CO')}</p>
+                          <p className="text-[10px] text-muted-foreground">{it.cantidad} × ${it.precio_unitario.toLocaleString('es-CO')}</p>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="rounded-lg p-3 bg-primary/5 border border-primary/20 flex items-center justify-between">
+                  <span className="text-sm font-medium">Total Estimado</span>
+                  <span className="text-lg font-bold text-primary">${(showDetail.total_estimado || 0).toLocaleString('es-CO')}</span>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <Button variant="ghost" size="sm" onClick={() => { handleDuplicate(showDetail); setShowDetail(null); }}>
+                    <Copy className="h-3.5 w-3.5 mr-1" />Duplicar
+                  </Button>
+                  {showDetail.estado === 'vigente' && (
+                    <Button size="sm" onClick={() => { setShowConvert(showDetail); setShowDetail(null); }}>
+                      <ArrowRightCircle className="h-3.5 w-3.5 mr-1" />Convertir a Orden
+                    </Button>
+                  )}
                 </div>
               </div>
             );

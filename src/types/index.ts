@@ -70,6 +70,7 @@ export interface Cita {
 
 export type EstadoProducto =
   | 'pedido_creado'
+  | 'alistamiento'
   | 'enviado_laboratorio'
   | 'recibido_laboratorio'
   | 'en_produccion'
@@ -82,11 +83,10 @@ export type EstadoProducto =
 
 export const ESTADOS_PRODUCTO: { key: EstadoProducto; label: string }[] = [
   { key: 'pedido_creado', label: 'Pedido Creado' },
-  { key: 'enviado_laboratorio', label: 'Enviado a Lab' },
-  { key: 'recibido_laboratorio', label: 'Recibido en Lab' },
-  { key: 'en_produccion', label: 'En Producción' },
+  { key: 'alistamiento', label: 'Alistamiento' },
+  { key: 'enviado_laboratorio', label: 'Envío a Laboratorio' },
+  { key: 'en_produccion', label: 'Producción' },
   { key: 'producido', label: 'Producido' },
-  { key: 'en_transito', label: 'En Tránsito' },
   { key: 'recibido_optica', label: 'Recibido en Óptica' },
   { key: 'control_calidad', label: 'Control de Calidad' },
   { key: 'listo_entrega', label: 'Listo para Entrega' },

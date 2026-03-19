@@ -8,6 +8,21 @@ import { supabase } from '@/integrations/supabase/client';
 import type { EstadoProducto, OrdenProducto } from '@/types';
 import { toast } from 'sonner';
 
+function getTiempoEsperado(tipoLenteTiempo: string | null, labDefault: number | null): number {
+  switch (tipoLenteTiempo) {
+    case 'progresivo':
+    case 'talla':
+    case 'sol_formula':
+      return 3;
+    case 'terminado':
+      return 1;
+    case 'montura_3piezas':
+      return 2;
+    default:
+      return labDefault || 3;
+  }
+}
+
 export function KanbanBoard() {
   const [selectedItem, setSelectedItem] = useState<OrdenProducto | null>(null);
   const queryClient = useQueryClient();
@@ -25,12 +40,13 @@ export function KanbanBoard() {
         orden_id: p.orden_id,
         paciente_nombre: `${p.ordenes?.pacientes?.nombres || ''} ${p.ordenes?.pacientes?.apellidos || ''}`.trim(),
         tipo_producto: p.tipo_producto,
+        tipo_lente_tiempo: p.tipo_lente_tiempo,
         descripcion: p.descripcion,
         laboratorio_nombre: p.laboratorios?.nombre || 'N/A',
         estado_actual: p.estado_actual,
         fecha_creacion: p.created_at,
         dias_en_estado: Math.max(0, Math.floor((Date.now() - new Date(p.updated_at).getTime()) / 86400000)),
-        tiempo_esperado_dias: p.laboratorios?.tiempo_promedio_entrega || 3,
+        tiempo_esperado_dias: getTiempoEsperado(p.tipo_lente_tiempo, p.laboratorios?.tiempo_promedio_entrega),
         es_garantia: p.es_garantia || false,
         es_reproceso: p.es_reproceso || false,
         precio_venta: p.precio_venta || 0,

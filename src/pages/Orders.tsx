@@ -240,7 +240,22 @@ export default function Orders() {
               )}
             </div>
 
-            <div className="space-y-2"><Label>Descripción *</Label><Input name="descripcion" required placeholder="Progresivo Varilux X" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Descripción *</Label><Input name="descripcion" required placeholder="Progresivo Varilux X" /></div>
+              <div className="space-y-2">
+                <Label>Tipo de Lente / Tiempo</Label>
+                <Select name="tipo_lente_tiempo">
+                  <SelectTrigger><SelectValue placeholder="Seleccione tipo" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="progresivo">Progresivo (3 días)</SelectItem>
+                    <SelectItem value="talla">Talla (3 días)</SelectItem>
+                    <SelectItem value="sol_formula">Sol con fórmula (3 días)</SelectItem>
+                    <SelectItem value="terminado">Terminado (1 día)</SelectItem>
+                    <SelectItem value="montura_3piezas">Montura 3 piezas (2 días)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -250,6 +265,7 @@ export default function Orders() {
                   <SelectContent>
                     <SelectItem value="contado">Contado</SelectItem>
                     <SelectItem value="nomina">Nómina</SelectItem>
+                    <SelectItem value="cuotas">Cuotas</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -65,8 +65,11 @@ export default function ClinicalRecords() {
         formula_oi_eje: formData.formula_oi_eje ? parseInt(formData.formula_oi_eje) : null,
         formula_oi_adicion: formData.formula_oi_adicion ? parseFloat(formData.formula_oi_adicion) : null,
         distancia_pupilar: formData.distancia_pupilar ? parseFloat(formData.distancia_pupilar) : null,
+        distancia_pupilar_od: formData.distancia_pupilar_od ? parseFloat(formData.distancia_pupilar_od) : null,
+        distancia_pupilar_oi: formData.distancia_pupilar_oi ? parseFloat(formData.distancia_pupilar_oi) : null,
         altura_pupilar_od: formData.altura_pupilar_od ? parseFloat(formData.altura_pupilar_od) : null,
         altura_pupilar_oi: formData.altura_pupilar_oi ? parseFloat(formData.altura_pupilar_oi) : null,
+        distancia_vertice: formData.distancia_vertice ? parseFloat(formData.distancia_vertice) : null,
         diagnostico: formData.diagnostico,
         codigo_cie10: formData.codigo_cie10,
         plan_manejo: formData.plan_manejo,
@@ -223,9 +226,14 @@ export default function ClinicalRecords() {
                 <Card>
                   <CardContent className="pt-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="space-y-1"><Label className="text-xs">Distancia Pupilar (mm)</Label><Input name="distancia_pupilar" type="number" step="0.5" placeholder="63.0" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Distancia Pupilar Total (mm)</Label><Input name="distancia_pupilar" type="number" step="0.5" placeholder="63.0" /></div>
+                      <div className="space-y-1"><Label className="text-xs">DP Ojo Derecho (mm)</Label><Input name="distancia_pupilar_od" type="number" step="0.5" placeholder="31.5" /></div>
+                      <div className="space-y-1"><Label className="text-xs">DP Ojo Izquierdo (mm)</Label><Input name="distancia_pupilar_oi" type="number" step="0.5" placeholder="31.5" /></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
                       <div className="space-y-1"><Label className="text-xs">Altura Pupilar OD (mm)</Label><Input name="altura_pupilar_od" type="number" step="0.5" placeholder="0.0" /></div>
                       <div className="space-y-1"><Label className="text-xs">Altura Pupilar OI (mm)</Label><Input name="altura_pupilar_oi" type="number" step="0.5" placeholder="0.0" /></div>
+                      <div className="space-y-1"><Label className="text-xs">Distancia al Vértice (mm)</Label><Input name="distancia_vertice" type="number" step="0.5" placeholder="12.0" /></div>
                     </div>
                   </CardContent>
                 </Card>

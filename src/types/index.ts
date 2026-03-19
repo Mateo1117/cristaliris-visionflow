@@ -98,6 +98,7 @@ export interface OrdenProducto {
   orden_id: string;
   paciente_nombre: string;
   tipo_producto: 'lente' | 'montura' | 'insumo';
+  tipo_lente_tiempo?: string | null;
   descripcion: string;
   laboratorio_nombre: string;
   estado_actual: EstadoProducto;

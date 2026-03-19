@@ -3,6 +3,7 @@ import { ESTADOS_PRODUCTO } from '@/types';
 import { KanbanColumn } from './KanbanColumn';
 import { OrderDetailDialog } from './OrderDetailDialog';
 import { ReadyForDeliveryDialog } from './ReadyForDeliveryDialog';
+import { QualityCheckDialog } from './QualityCheckDialog';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,6 +28,7 @@ function getTiempoEsperado(tipoLenteTiempo: string | null, labDefault: number | 
 export function KanbanBoard() {
   const [selectedItem, setSelectedItem] = useState<OrdenProducto | null>(null);
   const [pendingDelivery, setPendingDelivery] = useState<{ id: string; oldState: string } | null>(null);
+  const [pendingQC, setPendingQC] = useState<{ id: string; oldState: string; item: OrdenProducto } | null>(null);
   const queryClient = useQueryClient();
 
   const { data: productos = [], isLoading } = useQuery({
@@ -63,7 +65,7 @@ export function KanbanBoard() {
   });
 
   const moveItem = useMutation({
-    mutationFn: async ({ id, oldState, newState }: { id: string; oldState: string; newState: string }) => {
+    mutationFn: async ({ id, oldState, newState, observaciones }: { id: string; oldState: string; newState: string; observaciones?: string }) => {
       const { data: { user } } = await supabase.auth.getUser();
       const { error: e1 } = await supabase.from('orden_productos')
         .update({ estado_actual: newState as any })
@@ -75,8 +77,16 @@ export function KanbanBoard() {
         estado_nuevo: newState as any,
         metodo: 'manual',
         usuario_id: user?.id || null,
+        justificacion: observaciones || null,
       });
       if (e2) throw e2;
+
+      // If passing QC, update fecha_control_calidad
+      if (oldState === 'control_calidad') {
+        await supabase.from('orden_productos')
+          .update({ fecha_control_calidad: new Date().toISOString(), observaciones: observaciones || null })
+          .eq('id', id);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
@@ -86,12 +96,27 @@ export function KanbanBoard() {
   });
 
   const handleDrop = (itemId: string, oldState: string, newState: EstadoProducto) => {
+    // Intercept leaving "control_calidad" → require checklist
+    if (oldState === 'control_calidad' && newState !== 'control_calidad') {
+      const item = productos.find((p: any) => p.id === itemId);
+      if (item) {
+        setPendingQC({ id: itemId, oldState, item });
+        return;
+      }
+    }
     // Intercept "listo_entrega" to show notification dialog
     if (newState === 'listo_entrega') {
       setPendingDelivery({ id: itemId, oldState });
       return;
     }
     moveItem.mutate({ id: itemId, oldState, newState });
+  };
+
+  const handleConfirmQC = (observaciones: string) => {
+    if (pendingQC) {
+      moveItem.mutate({ id: pendingQC.id, oldState: pendingQC.oldState, newState: 'listo_entrega', observaciones });
+      setPendingQC(null);
+    }
   };
 
   const handleConfirmDelivery = () => {
@@ -131,6 +156,13 @@ export function KanbanBoard() {
         onOpenChange={(open) => { if (!open) setPendingDelivery(null); }}
         ordenProductoId={pendingDelivery?.id || null}
         onConfirm={handleConfirmDelivery}
+      />
+      <QualityCheckDialog
+        open={!!pendingQC}
+        onOpenChange={(open) => { if (!open) setPendingQC(null); }}
+        onConfirm={handleConfirmQC}
+        pacienteNombre={pendingQC?.item.paciente_nombre}
+        descripcion={pendingQC?.item.descripcion}
       />
     </>
   );

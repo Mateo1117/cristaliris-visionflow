@@ -67,6 +67,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
         codigo_cie10: formData.codigo_cie10,
         plan_manejo: formData.plan_manejo,
         observaciones: formData.observaciones,
+        firma_optometra: formData.firma_optometra || null,
       });
       if (error) throw error;
     },

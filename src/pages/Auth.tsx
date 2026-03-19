@@ -139,6 +139,37 @@ export default function Auth() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Forgot Password Modal */}
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowForgot(false)}>
+          <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Recuperar Contraseña</CardTitle>
+              <p className="text-sm text-muted-foreground">Ingresa tu correo y te enviaremos un enlace para restablecer tu contraseña.</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Correo electrónico</Label>
+                <Input
+                  type="email"
+                  placeholder="usuario@cristaliris.com"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowForgot(false)}>
+                  Cancelar
+                </Button>
+                <Button className="flex-1" onClick={handleForgotPassword} disabled={loading}>
+                  {loading ? 'Enviando...' : 'Enviar enlace'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

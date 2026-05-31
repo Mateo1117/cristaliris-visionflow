@@ -36,12 +36,15 @@ export function KanbanBoard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orden_productos')
-        .select('*, laboratorios(nombre, tiempo_promedio_entrega), ordenes(pacientes(nombres, apellidos))')
+        .select('*, laboratorios(nombre, tiempo_promedio_entrega), ordenes(numero_orden, pacientes(nombres, apellidos))')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data.map((p: any) => ({
         id: p.id,
         orden_id: p.orden_id,
+        numero_orden: p.ordenes?.numero_orden || null,
+        numero_montura: p.numero_montura || null,
+        medidas_progresivo: p.medidas_progresivo || null,
         paciente_nombre: `${p.ordenes?.pacientes?.nombres || ''} ${p.ordenes?.pacientes?.apellidos || ''}`.trim(),
         tipo_producto: p.tipo_producto,
         tipo_lente_tiempo: p.tipo_lente_tiempo,

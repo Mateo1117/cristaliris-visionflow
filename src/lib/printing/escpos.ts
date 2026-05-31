@@ -1,3 +1,4 @@
+/// <reference types="w3c-web-usb" />
 /**
  * Impresión directa por WebUSB — sin drivers de SO.
  * Compatible con Jaltech POS JAL-838L (2-en-1, 80 mm + etiquetas).

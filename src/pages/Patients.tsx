@@ -30,25 +30,61 @@ export default function Patients() {
     },
   });
 
+  const buildPayload = async (f: Record<string, any>) => {
+    let empleadoId = f.empleado_titular_id || null;
+    // Auto-crear empleado si modalidad nómina, hay empresa y titular nuevo
+    if (f.modalidad_pago === 'nomina' && f.empresa_id && !empleadoId && f.empleado_titular_cedula) {
+      const { data: existing } = await supabase
+        .from('empleados_nomina')
+        .select('id')
+        .eq('empresa_id', f.empresa_id)
+        .eq('cedula', f.empleado_titular_cedula)
+        .maybeSingle();
+      if (existing) {
+        empleadoId = existing.id;
+      } else {
+        const { data: nuevo, error: errEmp } = await supabase
+          .from('empleados_nomina')
+          .insert({
+            empresa_id: f.empresa_id,
+            nombre: f.empleado_titular_nombre,
+            cedula: f.empleado_titular_cedula,
+            celular: f.empleado_titular_celular || null,
+          })
+          .select('id')
+          .single();
+        if (errEmp) throw errEmp;
+        empleadoId = nuevo.id;
+      }
+    }
+    return {
+      tipo_documento: f.tipo_documento,
+      numero_documento: f.numero_documento,
+      nombres: f.nombres,
+      apellidos: f.apellidos,
+      fecha_nacimiento: f.fecha_nacimiento || null,
+      genero: f.genero || null,
+      telefono: f.telefono,
+      email: f.email,
+      direccion: f.direccion,
+      ciudad: f.ciudad || 'Bogotá',
+      departamento: f.departamento || 'Cundinamarca',
+      modalidad_pago: f.modalidad_pago || 'contado',
+      es_fuera_bogota: f.ciudad !== 'Bogotá',
+      empresa_id: f.empresa_id || null,
+      referido_por: f.referido_por || null,
+      ocupacion: f.ocupacion || null,
+      empleado_titular_id: empleadoId,
+      empleado_titular_nombre: f.empleado_titular_nombre || null,
+      empleado_titular_cedula: f.empleado_titular_cedula || null,
+      empleado_titular_celular: f.empleado_titular_celular || null,
+    };
+  };
+
   const createPaciente = useMutation({
     mutationFn: async (formData: Record<string, any>) => {
-      const { error } = await supabase.from('pacientes').insert({
-        tipo_documento: formData.tipo_documento,
-        numero_documento: formData.numero_documento,
-        nombres: formData.nombres,
-        apellidos: formData.apellidos,
-        fecha_nacimiento: formData.fecha_nacimiento || null,
-        genero: formData.genero || null,
-        telefono: formData.telefono,
-        email: formData.email,
-        direccion: formData.direccion,
-        ciudad: formData.ciudad || 'Bogotá',
-        departamento: formData.departamento || 'Cundinamarca',
-        modalidad_pago: formData.modalidad_pago || 'contado',
-        es_fuera_bogota: formData.ciudad !== 'Bogotá',
-        empresa_id: formData.empresa_id || null,
-        referido_por: formData.referido_por || null,
-      });
+      const payload = await buildPayload(formData);
+      const { error } = await supabase.from('pacientes').insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -62,23 +98,8 @@ export default function Patients() {
   const updatePaciente = useMutation({
     mutationFn: async (formData: Record<string, any>) => {
       const { id, ...rest } = formData;
-      const { error } = await supabase.from('pacientes').update({
-        tipo_documento: rest.tipo_documento,
-        numero_documento: rest.numero_documento,
-        nombres: rest.nombres,
-        apellidos: rest.apellidos,
-        fecha_nacimiento: rest.fecha_nacimiento || null,
-        genero: rest.genero || null,
-        telefono: rest.telefono,
-        email: rest.email,
-        direccion: rest.direccion,
-        ciudad: rest.ciudad || 'Bogotá',
-        departamento: rest.departamento || 'Cundinamarca',
-        modalidad_pago: rest.modalidad_pago || 'contado',
-        es_fuera_bogota: rest.ciudad !== 'Bogotá',
-        empresa_id: rest.empresa_id || null,
-        referido_por: rest.referido_por || null,
-      }).eq('id', id);
+      const payload = await buildPayload(rest);
+      const { error } = await supabase.from('pacientes').update(payload).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {

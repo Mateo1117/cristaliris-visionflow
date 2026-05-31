@@ -136,19 +136,28 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
 
   const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
 
-  const printQR = () => {
+  const printLabel = () => {
     const svg = document.getElementById('qr-print-area');
-    if (!svg) return;
-    const w = window.open('', '_blank');
-    if (!w) return;
-    w.document.write(`<html><head><title>QR ${numeroOrdenLabel}</title><style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif}h1{margin:4px 0;font-size:28px;letter-spacing:2px}h3{margin:8px 0}</style></head><body>`);
-    w.document.write(`<h1>${numeroOrdenLabel}</h1>`);
-    w.document.write(`<h3>${item?.paciente_nombre}</h3><p style="font-size:12px">${item?.descripcion}</p><p style="font-size:10px">Lab: ${item?.laboratorio_nombre}</p>`);
-    w.document.write(svg.outerHTML);
-    w.document.write(`<p style="font-size:10px;margin-top:8px">${item?.id.slice(0, 8)}</p>`);
-    w.document.write('</body></html>');
-    w.document.close();
-    w.print();
+    if (!svg || !item) return;
+    printThermalLabel({
+      numero: numeroOrdenLabel || '',
+      qrSvg: svg.outerHTML,
+      paciente: item.paciente_nombre,
+      descripcion: item.descripcion,
+      laboratorio: item.laboratorio_nombre,
+      numeroMontura: item.numero_montura || undefined,
+    });
+  };
+
+  const printReceipt = () => {
+    if (!item) return;
+    printThermalReceipt({
+      numero: numeroOrdenLabel || '',
+      paciente: item.paciente_nombre,
+      items: [{ descripcion: item.descripcion, cantidad: 1, precio: item.precio_venta || 0 }],
+      total: item.precio_venta || 0,
+      notas: `Laboratorio: ${item.laboratorio_nombre}${item.numero_montura ? ` · Montura: ${item.numero_montura}` : ''}`,
+    });
   };
 
   const qrUrl = item ? `${window.location.origin}/scan?id=${item.id}` : '';

@@ -30,7 +30,7 @@ export default function Reports() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orden_productos')
-        .select('estado_actual, tipo_producto, es_garantia, laboratorio_id, precio_venta, costo_laboratorio, utilidad_calculada, producto_catalogo_id, descripcion, laboratorios(nombre), productos_catalogo(nombre, categoria)');
+        .select('estado_actual, tipo_producto, es_garantia, laboratorio_id, precio_venta, costo_laboratorio, costo_montura, costo_lente, costo_insumos, comision_financiera, utilidad_calculada, producto_catalogo_id, descripcion, laboratorios(nombre), productos_catalogo(nombre, categoria)');
       if (error) throw error;
       return data;
     },

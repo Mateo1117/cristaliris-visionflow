@@ -120,12 +120,25 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                 <InfoField icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={paciente.email || '—'} />
                 <InfoField icon={<MapPin className="h-3.5 w-3.5" />} label="Dirección" value={paciente.direccion || '—'} />
                 <InfoField label="Ciudad" value={`${paciente.ciudad || '—'}, ${paciente.departamento || '—'}`} />
+                <InfoField label="Ocupación" value={paciente.ocupacion || '—'} />
                 <InfoField icon={<Building2 className="h-3.5 w-3.5" />} label="Empresa" value={paciente.empresas?.razon_social || '—'} />
-                <InfoField label="Modalidad Pago" value={paciente.modalidad_pago === 'nomina' ? 'Nómina' : paciente.modalidad_pago === 'cuotas' ? 'Cuotas' : 'Contado'} />
+                <InfoField label="Modalidad Pago" value={paciente.modalidad_pago ? paciente.modalidad_pago.charAt(0).toUpperCase() + paciente.modalidad_pago.slice(1) : '—'} />
                 <InfoField label="Sede Registro" value={paciente.sedes?.nombre || '—'} />
                 <InfoField label="Referido por" value={paciente.referido_por || '—'} />
                 <InfoField label="Registrado" value={new Date(paciente.created_at).toLocaleDateString('es-CO')} />
               </div>
+              {paciente.modalidad_pago === 'nomina' && paciente.empleado_titular_nombre && (
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Empleado Titular (Nómina)</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                      <InfoField label="Nombre" value={paciente.empleado_titular_nombre} />
+                      <InfoField label="Cédula" value={paciente.empleado_titular_cedula || '—'} />
+                      <InfoField label="Celular" value={paciente.empleado_titular_celular || '—'} />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
               {paciente.observaciones && (
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Observaciones</p>

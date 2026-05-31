@@ -167,7 +167,12 @@ export const printThermalLabel = (data: LabelData) => {
   }
   .row { display: flex; gap: 2mm; align-items: stretch; height: 100%; }
   .qr { width: 32mm; height: 32mm; flex: none; }
-  .qr svg { width: 100%; height: 100%; display: block; }
+  .qr svg {
+    width: 100%; height: 100%; display: block;
+    shape-rendering: crispEdges;
+    image-rendering: pixelated;
+  }
+  .qr svg * { shape-rendering: crispEdges; }
   .info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .num { font-size: 12px; font-weight: 800; letter-spacing: 0.5px; line-height: 1.1; }
   .name { font-size: 9px; font-weight: 700; margin-top: 1mm; line-height: 1.1; overflow: hidden; }

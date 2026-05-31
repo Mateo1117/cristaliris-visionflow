@@ -194,9 +194,10 @@ describe('ESC/POS receipt', () => {
     expect(text).toContain('Saldo');
     // GS V B 0 (corte parcial)
     expect(text).toMatch(/\x1dVB\x00/);
-    // ñ/é codificados en CP858 (no como '?')
-    expect(all).toContain(0xa4); // ñ
-    expect(all).toContain(0x82); // é
+    // Ñ/é codificados en CP858 (no como '?')
+    const arr = Array.from(all);
+    expect(arr).toContain(0xa5); // Ñ
+    expect(arr).toContain(0x82); // é
   });
 
   it('lleva el número de orden y los totales correctamente', async () => {

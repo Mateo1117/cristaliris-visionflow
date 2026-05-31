@@ -6,40 +6,108 @@ import { OrderListView } from '@/components/orders/OrderListView';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Package, Calculator, Kanban, List } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { Plus, Trash2, Kanban, List, Ruler, MessageCircle } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+const DESCUENTO_MONTURA_PROPIA = 90000;
+
+const MEDIOS_PAGO = [
+  { v: 'efectivo', l: 'Efectivo' },
+  { v: 'datafono', l: 'Datafono' },
+  { v: 'transferencia', l: 'Transferencia' },
+  { v: 'tarjeta', l: 'Tarjeta Crédito' },
+  { v: 'addi', l: 'Addi' },
+  { v: 'sistecredito', l: 'Sistecrédito' },
+  { v: 'llave', l: 'Llave' },
+  { v: 'nomina', l: 'Nómina' },
+];
+
+interface OrderItem {
+  producto_catalogo_id?: string | null;
+  descripcion: string;
+  categoria?: string;
+  cantidad: number;
+  precio_unitario: number;
+  tipo_producto: string;
+  tipo_lente_tiempo?: string | null;
+  aplica_descuento: boolean;
+  descuento_porcentaje: number;
+  laboratorio_id?: string | null;
+  numero_montura?: string;
+  medidas_progresivo?: {
+    puente?: string;
+    distancia_vertice?: string;
+    angulo_pantoscopico?: string;
+    dp_od?: string;
+    dp_oi?: string;
+    altura_od?: string;
+    altura_oi?: string;
+    montura_vertical?: string;
+    montura_horizontal?: string;
+    montura_efectiva?: string;
+    montura_mecanica?: string;
+  };
+}
+
+const nuevoItem = (descDefecto = 0): OrderItem => ({
+  producto_catalogo_id: null,
+  descripcion: '',
+  categoria: '',
+  cantidad: 1,
+  precio_unitario: 0,
+  tipo_producto: 'lente',
+  tipo_lente_tiempo: null,
+  aplica_descuento: true,
+  descuento_porcentaje: descDefecto,
+  numero_montura: '',
+  medidas_progresivo: {},
+});
+
+const categoriaLabel: Record<string, string> = {
+  monofocal: 'Monofocales',
+  bifocal: 'Bifocales',
+  progresivo: 'Progresivos',
+  lente_contacto: 'Lentes de Contacto',
+  otros: 'Otros',
+};
+
 export default function Orders() {
   const [showForm, setShowForm] = useState(false);
   const [selectedPaciente, setSelectedPaciente] = useState('');
-  const [selectedMontura, setSelectedMontura] = useState('');
-  const [tipoProducto, setTipoProducto] = useState('lente');
+  const [items, setItems] = useState<OrderItem[]>([nuevoItem()]);
+  const [monturaPropia, setMonturaPropia] = useState(false);
+  const [observaciones, setObservaciones] = useState('');
+  const [abono, setAbono] = useState(0);
+  const [medioPagoAbono, setMedioPagoAbono] = useState('efectivo');
+  const [medioPagoSaldo, setMedioPagoSaldo] = useState('efectivo');
   const queryClient = useQueryClient();
-
-  // Cost state for live utility calculation
-  const [precioVenta, setPrecioVenta] = useState(0);
-  const [costoLaboratorio, setCostoLaboratorio] = useState(0);
-  const [costoMontura, setCostoMontura] = useState(0);
-  const [costoLente, setCostoLente] = useState(0);
-  const [costoInsumos, setCostoInsumos] = useState(0);
-  const [comisionFinanciera, setComisionFinanciera] = useState(0);
-
-  const utilidad = useMemo(() =>
-    precioVenta - costoLaboratorio - costoMontura - costoLente - costoInsumos - comisionFinanciera
-  , [precioVenta, costoLaboratorio, costoMontura, costoLente, costoInsumos, comisionFinanciera]);
 
   const { data: pacientes = [] } = useQuery({
     queryKey: ['pacientes-ordenes'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('pacientes').select('id, nombres, apellidos, numero_documento, modalidad_pago').order('nombres');
+      const { data, error } = await supabase
+        .from('pacientes')
+        .select('id, nombres, apellidos, numero_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)')
+        .order('nombres');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: productos = [] } = useQuery({
+    queryKey: ['productos-catalogo-ordenes'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('productos_catalogo').select('*').eq('activo', true).order('orden_display');
       if (error) throw error;
       return data;
     },
@@ -54,107 +122,170 @@ export default function Orders() {
     },
   });
 
-  const { data: monturas = [] } = useQuery({
-    queryKey: ['inventario-monturas'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('inventario')
-        .select('id, codigo_referencia, marca, modelo, descripcion, precio_venta, costo_unitario, cantidad_disponible, sedes(nombre)')
-        .in('tipo', ['montura', 'lente', 'insumo', 'accesorio'])
-        .gt('cantidad_disponible', 0)
-        .eq('estado', 'activo')
-        .order('marca');
-      if (error) throw error;
-      return data;
-    },
-  });
+  const pacienteSel = pacientes.find((p: any) => p.id === selectedPaciente);
+  const descuentoConvenio: number = (pacienteSel?.empresas?.porcentaje_descuento as number) || 0;
+
+  useEffect(() => {
+    setItems((prev) => prev.map((it) =>
+      it.aplica_descuento ? { ...it, descuento_porcentaje: descuentoConvenio } : { ...it, descuento_porcentaje: 0 }
+    ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [descuentoConvenio]);
+
+  const addItem = () => setItems([...items, nuevoItem(descuentoConvenio)]);
+  const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
+  const updateItem = (i: number, patch: Partial<OrderItem>) => {
+    const updated = [...items];
+    updated[i] = { ...updated[i], ...patch };
+    setItems(updated);
+  };
+
+  const handleProductoChange = (index: number, productoId: string) => {
+    if (productoId === 'free') {
+      updateItem(index, {
+        producto_catalogo_id: null, descripcion: '', categoria: '', precio_unitario: 0,
+        aplica_descuento: true, descuento_porcentaje: descuentoConvenio, tipo_lente_tiempo: null,
+      });
+      return;
+    }
+    const prod = productos.find((p: any) => p.id === productoId);
+    if (!prod) return;
+    const tipoTiempo = prod.categoria === 'progresivo' ? 'progresivo'
+      : prod.categoria === 'bifocal' ? 'talla'
+      : prod.categoria === 'monofocal' ? 'terminado'
+      : null;
+    updateItem(index, {
+      producto_catalogo_id: prod.id,
+      descripcion: prod.nombre,
+      categoria: prod.categoria,
+      precio_unitario: Number(prod.precio_full) || 0,
+      tipo_producto: 'lente',
+      tipo_lente_tiempo: tipoTiempo,
+      aplica_descuento: !!prod.aplica_descuento,
+      descuento_porcentaje: prod.aplica_descuento ? descuentoConvenio : 0,
+    });
+  };
+
+  const updateMedida = (i: number, field: string, value: string) => {
+    const cur = items[i].medidas_progresivo || {};
+    updateItem(i, { medidas_progresivo: { ...cur, [field]: value } });
+  };
+
+  const totales = useMemo(() => {
+    const subtotal = items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
+    const descuento = items.reduce((s, it) => {
+      const ls = it.cantidad * it.precio_unitario;
+      const pct = it.aplica_descuento ? (it.descuento_porcentaje || 0) : 0;
+      return s + ls * (pct / 100);
+    }, 0);
+    const descMontura = monturaPropia ? DESCUENTO_MONTURA_PROPIA : 0;
+    const total = Math.max(0, subtotal - descuento - descMontura);
+    const saldo = Math.max(0, total - (abono || 0));
+    return { subtotal, descuento, descMontura, total, saldo };
+  }, [items, monturaPropia, abono]);
+
+  const productosPorCategoria = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    productos.forEach((p: any) => {
+      const key = p.categoria || 'otros';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    });
+    return groups;
+  }, [productos]);
 
   const resetForm = () => {
-    setSelectedPaciente(''); setSelectedMontura(''); setTipoProducto('lente');
-    setPrecioVenta(0); setCostoLaboratorio(0); setCostoMontura(0);
-    setCostoLente(0); setCostoInsumos(0); setComisionFinanciera(0);
+    setSelectedPaciente(''); setItems([nuevoItem()]); setMonturaPropia(false);
+    setObservaciones(''); setAbono(0); setMedioPagoAbono('efectivo'); setMedioPagoSaldo('efectivo');
   };
 
   const createOrden = useMutation({
-    mutationFn: async (formData: Record<string, any>) => {
-      const calculatedUtilidad = (parseFloat(formData.precio_venta) || 0)
-        - (parseFloat(formData.costo_laboratorio) || 0)
-        - (parseFloat(formData.costo_montura) || 0)
-        - (parseFloat(formData.costo_lente) || 0)
-        - (parseFloat(formData.costo_insumos) || 0)
-        - (parseFloat(formData.comision_financiera) || 0);
+    mutationFn: async () => {
+      if (!selectedPaciente) throw new Error('Seleccione un paciente');
+      const lineas = items.filter(it => it.descripcion);
+      if (lineas.length === 0) throw new Error('Agregue al menos un ítem');
 
       const { data: orden, error: oe } = await supabase.from('ordenes').insert({
-        paciente_id: formData.paciente_id,
-        modalidad_pago: formData.modalidad_pago || 'contado',
-        total_final: parseFloat(formData.precio_venta) || 0,
-        saldo_pendiente: parseFloat(formData.precio_venta) || 0,
-      }).select('id').single();
+        paciente_id: selectedPaciente,
+        empresa_id: pacienteSel?.empresa_id || null,
+        modalidad_pago: medioPagoSaldo,
+        subtotal: totales.subtotal,
+        descuento_empresa: totales.descuento,
+        descuento_porcentaje: descuentoConvenio,
+        descuento_montura_propia: totales.descMontura,
+        montura_propia: monturaPropia,
+        total_final: totales.total,
+        saldo_pendiente: totales.saldo,
+        estado_pago: totales.saldo === 0 ? 'pagado' : (abono > 0 ? 'parcial' : 'pendiente'),
+        observaciones: observaciones || null,
+      }).select('id, numero_orden').single();
       if (oe) throw oe;
 
-      const { error: pe } = await supabase.from('orden_productos').insert({
+      const productosOrden = lineas.map((it) => ({
         orden_id: orden.id,
-        tipo_producto: formData.tipo_producto,
-        descripcion: formData.descripcion,
-        laboratorio_id: formData.laboratorio_id || null,
-        precio_venta: parseFloat(formData.precio_venta) || 0,
-        montura_id: formData.montura_id || null,
-        costo_montura: parseFloat(formData.costo_montura) || 0,
-        costo_laboratorio: parseFloat(formData.costo_laboratorio) || 0,
-        costo_lente: parseFloat(formData.costo_lente) || 0,
-        costo_insumos: parseFloat(formData.costo_insumos) || 0,
-        comision_financiera: parseFloat(formData.comision_financiera) || 0,
-        utilidad_calculada: calculatedUtilidad,
-      });
+        tipo_producto: it.tipo_producto || 'lente',
+        descripcion: it.descripcion,
+        precio_venta: (it.cantidad || 1) * (it.precio_unitario || 0),
+        producto_catalogo_id: it.producto_catalogo_id || null,
+        laboratorio_id: it.laboratorio_id || null,
+        tipo_lente_tiempo: it.tipo_lente_tiempo || null,
+        numero_montura: it.numero_montura || null,
+        medidas_progresivo: it.tipo_lente_tiempo === 'progresivo' && it.medidas_progresivo
+          ? it.medidas_progresivo as any
+          : null,
+      }));
+      const { error: pe } = await supabase.from('orden_productos').insert(productosOrden);
       if (pe) throw pe;
 
-      if (formData.montura_id) {
-        const inv = monturas.find((m: any) => m.id === formData.montura_id);
-        if (inv) {
-          await supabase.from('inventario')
-            .update({ cantidad_disponible: Math.max(0, inv.cantidad_disponible - 1) })
-            .eq('id', formData.montura_id);
-        }
+      // Abono inicial
+      if (abono > 0) {
+        await supabase.from('abonos').insert({
+          paciente_id: selectedPaciente,
+          orden_id: orden.id,
+          monto: abono,
+          medio_pago: medioPagoAbono,
+          observaciones: `Abono inicial al crear orden`,
+        });
       }
+
+      // Notificación interna automática
+      await supabase.from('notificaciones').insert({
+        tipo: 'orden_creada',
+        titulo: `Nueva orden ORD-${String(orden.numero_orden).padStart(5, '0')}`,
+        detalle: `${pacienteSel?.nombres} ${pacienteSel?.apellidos} — Total $${totales.total.toLocaleString('es-CO')}`,
+      });
+
+      return { orden, paciente: pacienteSel };
     },
-    onSuccess: () => {
+    onSuccess: ({ orden, paciente }) => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
-      queryClient.invalidateQueries({ queryKey: ['inventario-monturas'] });
-      queryClient.invalidateQueries({ queryKey: ['inventario'] });
+      queryClient.invalidateQueries({ queryKey: ['notificaciones'] });
+      const numeroLabel = `ORD-${String(orden.numero_orden).padStart(5, '0')}`;
+      toast.success(`Orden ${numeroLabel} creada`, {
+        action: paciente?.telefono ? {
+          label: 'Avisar por WhatsApp',
+          onClick: () => {
+            const clean = (paciente.telefono as string).replace(/\D/g, '');
+            const phone = clean.startsWith('57') ? clean : `57${clean}`;
+            const msg = encodeURIComponent(
+              `Hola ${paciente.nombres}, hemos creado su orden ${numeroLabel} en Cristal Iris. ` +
+              `Total: $${totales.total.toLocaleString('es-CO')}. ` +
+              (totales.saldo > 0 ? `Saldo pendiente: $${totales.saldo.toLocaleString('es-CO')}.` : 'Pago completo registrado.')
+            );
+            window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+          },
+        } : undefined,
+      });
       setShowForm(false);
       resetForm();
-      toast.success('Orden creada exitosamente');
     },
     onError: (e: any) => toast.error(e.message),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!selectedPaciente) { toast.error('Seleccione un paciente'); return; }
-    const fd = new FormData(e.currentTarget);
-    const data: Record<string, any> = { paciente_id: selectedPaciente };
-    fd.forEach((v, k) => { data[k] = v; });
-    data.tipo_producto = tipoProducto;
-    data.montura_id = selectedMontura || null;
-    data.precio_venta = precioVenta;
-    data.costo_laboratorio = costoLaboratorio;
-    data.costo_montura = costoMontura;
-    data.costo_lente = costoLente;
-    data.costo_insumos = costoInsumos;
-    data.comision_financiera = comisionFinanciera;
-    createOrden.mutate(data);
+    createOrden.mutate();
   };
-
-  const handleMonturaChange = (val: string) => {
-    setSelectedMontura(val === 'none' ? '' : val);
-    if (val && val !== 'none') {
-      const inv = monturas.find((m: any) => m.id === val);
-      if (inv) setCostoMontura(inv.costo_unitario || inv.precio_venta || 0);
-    } else {
-      setCostoMontura(0);
-    }
-  };
-
-  const selectedInvItem = monturas.find((m: any) => m.id === selectedMontura);
 
   return (
     <AppLayout>
@@ -169,153 +300,231 @@ export default function Orders() {
           <TabsTrigger value="kanban" className="gap-1.5"><Kanban className="h-4 w-4" />Kanban</TabsTrigger>
           <TabsTrigger value="lista" className="gap-1.5"><List className="h-4 w-4" />Lista</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="kanban">
-          <KanbanBoard />
-        </TabsContent>
-
-        <TabsContent value="lista">
-          <OrderListView />
-        </TabsContent>
+        <TabsContent value="kanban"><KanbanBoard /></TabsContent>
+        <TabsContent value="lista"><OrderListView /></TabsContent>
       </Tabs>
 
       <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) resetForm(); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nueva Orden</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Paciente */}
             <div className="space-y-2">
               <Label>Paciente *</Label>
-              <Select onValueChange={setSelectedPaciente}>
+              <Select value={selectedPaciente} onValueChange={setSelectedPaciente}>
                 <SelectTrigger><SelectValue placeholder="Seleccione paciente" /></SelectTrigger>
                 <SelectContent>
                   {pacientes.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>{p.numero_documento} — {p.nombres} {p.apellidos}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Tipo Producto *</Label>
-                <Select value={tipoProducto} onValueChange={setTipoProducto}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lente">Lente</SelectItem>
-                    <SelectItem value="montura">Montura</SelectItem>
-                    <SelectItem value="insumo">Insumo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Laboratorio</Label>
-                <Select name="laboratorio_id">
-                  <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
-                  <SelectContent>
-                    {labs.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.nombre}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1"><Package className="h-3.5 w-3.5" />Ítem de Inventario (opcional)</Label>
-              <Select value={selectedMontura} onValueChange={handleMonturaChange}>
-                <SelectTrigger><SelectValue placeholder="Vincular ítem del inventario" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin vincular</SelectItem>
-                  {monturas.map((m: any) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.codigo_referencia ? `[${m.codigo_referencia}] ` : ''}{m.marca || ''} {m.modelo || ''} — Stock: {m.cantidad_disponible}
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.numero_documento} — {p.nombres} {p.apellidos}
+                      {p.empresas ? ` · ${p.empresas.razon_social} (${p.empresas.porcentaje_descuento}%)` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {selectedInvItem && (
-                <div className="bg-muted/50 rounded-md p-2 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{selectedInvItem.marca} {selectedInvItem.modelo}</span>
-                    <Badge variant="outline" className="text-[10px]">Stock: {selectedInvItem.cantidad_disponible}</Badge>
-                  </div>
-                  <p className="text-muted-foreground">{selectedInvItem.descripcion}</p>
-                  <p>Precio: <span className="font-medium">${selectedInvItem.precio_venta?.toLocaleString('es-CO')}</span></p>
-                </div>
+              {pacienteSel?.empresas && (
+                <p className="text-xs text-muted-foreground">
+                  Convenio aplicado por defecto: <span className="font-semibold text-primary">{descuentoConvenio}%</span>
+                </p>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Descripción *</Label><Input name="descripcion" required placeholder="Progresivo Varilux X" /></div>
-              <div className="space-y-2">
-                <Label>Tipo de Lente / Tiempo</Label>
-                <Select name="tipo_lente_tiempo">
-                  <SelectTrigger><SelectValue placeholder="Seleccione tipo" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="progresivo">Progresivo (3 días)</SelectItem>
-                    <SelectItem value="talla">Talla (3 días)</SelectItem>
-                    <SelectItem value="sol_formula">Sol con fórmula (3 días)</SelectItem>
-                    <SelectItem value="terminado">Terminado (1 día)</SelectItem>
-                    <SelectItem value="montura_3piezas">Montura 3 piezas (2 días)</SelectItem>
-                  </SelectContent>
-                </Select>
+            {/* Ítems */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Productos / Ítems</Label>
+                <Button type="button" size="sm" variant="outline" onClick={addItem}><Plus className="h-3 w-3 mr-1" />Agregar ítem</Button>
               </div>
+
+              {items.map((it, i) => (
+                <Card key={i} className="border-dashed">
+                  <CardContent className="p-3 space-y-3">
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-12 md:col-span-5 space-y-1">
+                        <Label className="text-xs">Producto</Label>
+                        <Select value={it.producto_catalogo_id || 'free'} onValueChange={(v) => handleProductoChange(i, v)}>
+                          <SelectTrigger><SelectValue placeholder="Seleccione del catálogo" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="free">— Personalizado (libre) —</SelectItem>
+                            {Object.entries(productosPorCategoria).map(([cat, prods]) => (
+                              <SelectGroup key={cat}>
+                                <SelectLabel>{categoriaLabel[cat] || cat}</SelectLabel>
+                                {prods.map((p: any) => (
+                                  <SelectItem key={p.id} value={p.id}>{p.nombre} — ${Number(p.precio_full).toLocaleString('es-CO')}</SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {!it.producto_catalogo_id && (
+                          <Input
+                            value={it.descripcion}
+                            onChange={(e) => updateItem(i, { descripcion: e.target.value })}
+                            placeholder="Descripción libre"
+                            className="mt-1"
+                          />
+                        )}
+                      </div>
+                      <div className="col-span-4 md:col-span-2 space-y-1">
+                        <Label className="text-xs">Cant.</Label>
+                        <Input type="number" min={1} value={it.cantidad} onChange={(e) => updateItem(i, { cantidad: parseInt(e.target.value) || 1 })} />
+                      </div>
+                      <div className="col-span-8 md:col-span-2 space-y-1">
+                        <Label className="text-xs">Precio</Label>
+                        <Input type="number" step="100" value={it.precio_unitario || ''} onChange={(e) => updateItem(i, { precio_unitario: parseFloat(e.target.value) || 0 })} />
+                      </div>
+                      <div className="col-span-8 md:col-span-2 space-y-1">
+                        <Label className="text-xs">% Desc.</Label>
+                        <Input
+                          type="number" min={0} max={100}
+                          disabled={!it.aplica_descuento}
+                          value={it.aplica_descuento ? (it.descuento_porcentaje || 0) : 0}
+                          onChange={(e) => updateItem(i, { descuento_porcentaje: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div className="col-span-4 md:col-span-1 flex justify-end">
+                        {items.length > 1 && (
+                          <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(i)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Laboratorio</Label>
+                        <Select value={it.laboratorio_id || 'none'} onValueChange={(v) => updateItem(i, { laboratorio_id: v === 'none' ? null : v })}>
+                          <SelectTrigger><SelectValue placeholder="Sin laboratorio" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Sin laboratorio</SelectItem>
+                            {labs.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.nombre}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs"># Montura</Label>
+                        <Input value={it.numero_montura || ''} onChange={(e) => updateItem(i, { numero_montura: e.target.value })} placeholder="Ej: M-1234" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Tipo / Tiempo</Label>
+                        <Select value={it.tipo_lente_tiempo || 'none'} onValueChange={(v) => updateItem(i, { tipo_lente_tiempo: v === 'none' ? null : v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">—</SelectItem>
+                            <SelectItem value="progresivo">Progresivo (3d)</SelectItem>
+                            <SelectItem value="talla">Talla (3d)</SelectItem>
+                            <SelectItem value="sol_formula">Sol con fórmula (3d)</SelectItem>
+                            <SelectItem value="terminado">Terminado (1d)</SelectItem>
+                            <SelectItem value="montura_3piezas">Montura 3 piezas (2d)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Medidas progresivo */}
+                    {it.tipo_lente_tiempo === 'progresivo' && (
+                      <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                        <div className="flex items-center gap-1 text-xs font-semibold text-primary">
+                          <Ruler className="h-3.5 w-3.5" />Medidas Progresivo
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                          {[
+                            ['puente', 'Puente'],
+                            ['distancia_vertice', 'Dist. Vértice'],
+                            ['angulo_pantoscopico', 'Áng. Pantoscópico'],
+                            ['dp_od', 'DP OD'],
+                            ['dp_oi', 'DP OI'],
+                            ['altura_od', 'Altura OD'],
+                            ['altura_oi', 'Altura OI'],
+                            ['montura_vertical', 'M. Vertical'],
+                            ['montura_horizontal', 'M. Horizontal'],
+                            ['montura_efectiva', 'M. Efectiva'],
+                            ['montura_mecanica', 'M. Mecánica'],
+                          ].map(([k, l]) => (
+                            <div key={k} className="space-y-0.5">
+                              <Label className="text-[10px] text-muted-foreground">{l}</Label>
+                              <Input
+                                className="h-8 text-xs"
+                                value={(it.medidas_progresivo as any)?.[k] || ''}
+                                onChange={(e) => updateMedida(i, k, e.target.value)}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Modalidad Pago</Label>
-                <Select name="modalidad_pago" defaultValue="contado">
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="contado">Contado</SelectItem>
-                    <SelectItem value="nomina">Nómina</SelectItem>
-                    <SelectItem value="cuotas">Cuotas</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
+            {/* Montura propia */}
+            <div className="flex items-center gap-2 p-3 rounded-md border">
+              <Checkbox id="montura-propia" checked={monturaPropia} onCheckedChange={(c) => setMonturaPropia(!!c)} />
+              <Label htmlFor="montura-propia" className="text-sm cursor-pointer">
+                Paciente trae su propia montura (descuento ${DESCUENTO_MONTURA_PROPIA.toLocaleString('es-CO')})
+              </Label>
             </div>
 
             <Separator />
 
-            <div className="space-y-3">
-              <Label className="flex items-center gap-1 text-sm font-semibold"><Calculator className="h-4 w-4 text-primary" />Desglose de Costos</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Precio Final (Venta)</Label>
-                  <Input type="number" step="100" value={precioVenta || ''} onChange={(e) => setPrecioVenta(parseFloat(e.target.value) || 0)} placeholder="0" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Costo Laboratorio</Label>
-                  <Input type="number" step="100" value={costoLaboratorio || ''} onChange={(e) => setCostoLaboratorio(parseFloat(e.target.value) || 0)} placeholder="0" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Costo Montura</Label>
-                  <Input type="number" step="100" value={costoMontura || ''} onChange={(e) => setCostoMontura(parseFloat(e.target.value) || 0)} placeholder="0" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Costo Lente</Label>
-                  <Input type="number" step="100" value={costoLente || ''} onChange={(e) => setCostoLente(parseFloat(e.target.value) || 0)} placeholder="0" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Costo Insumos</Label>
-                  <Input type="number" step="100" value={costoInsumos || ''} onChange={(e) => setCostoInsumos(parseFloat(e.target.value) || 0)} placeholder="0" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Comisión Financiera</Label>
-                  <Input type="number" step="100" value={comisionFinanciera || ''} onChange={(e) => setComisionFinanciera(parseFloat(e.target.value) || 0)} placeholder="0" />
-                </div>
-              </div>
+            {/* Totales */}
+            <div className="rounded-lg border p-4 space-y-2 bg-muted/20">
+              <div className="flex justify-between text-sm"><span>Subtotal</span><span>${totales.subtotal.toLocaleString('es-CO')}</span></div>
+              <div className="flex justify-between text-sm text-destructive"><span>Descuento convenio</span><span>-${totales.descuento.toLocaleString('es-CO')}</span></div>
+              {monturaPropia && (
+                <div className="flex justify-between text-sm text-destructive"><span>Montura propia</span><span>-${totales.descMontura.toLocaleString('es-CO')}</span></div>
+              )}
+              <Separator />
+              <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="text-primary">${totales.total.toLocaleString('es-CO')}</span></div>
 
-              <div className={`rounded-lg p-3 flex items-center justify-between ${utilidad >= 0 ? 'bg-success/10 border border-success/30' : 'bg-destructive/10 border border-destructive/30'}`}>
-                <span className="text-sm font-medium">Utilidad Calculada</span>
-                <span className={`text-lg font-bold ${utilidad >= 0 ? 'text-success' : 'text-destructive'}`}>
-                  ${utilidad.toLocaleString('es-CO')}
-                </span>
+              <div className="grid grid-cols-2 gap-3 pt-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Abono inicial</Label>
+                  <Input type="number" min={0} max={totales.total} value={abono || ''} onChange={(e) => setAbono(parseFloat(e.target.value) || 0)} placeholder="0" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Medio del abono</Label>
+                  <Select value={medioPagoAbono} onValueChange={setMedioPagoAbono} disabled={abono <= 0}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MEDIOS_PAGO.map(m => <SelectItem key={m.v} value={m.v}>{m.l}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Saldo pendiente</Label>
+                  <Input value={`$${totales.saldo.toLocaleString('es-CO')}`} disabled className="font-medium" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Medio del saldo</Label>
+                  <Select value={medioPagoSaldo} onValueChange={setMedioPagoSaldo}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MEDIOS_PAGO.map(m => <SelectItem key={m.v} value={m.v}>{m.l}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createOrden.isPending}>{createOrden.isPending ? 'Creando...' : 'Crear Orden'}</Button>
+            {/* Observaciones */}
+            <div className="space-y-1">
+              <Label className="text-sm">Observaciones</Label>
+              <Textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Notas internas, instrucciones para laboratorio, etc." rows={3} />
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <MessageCircle className="h-3 w-3" />Se notificará al paciente automáticamente al crear la orden
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+                <Button type="submit" disabled={createOrden.isPending}>
+                  {createOrden.isPending ? 'Creando...' : 'Crear Orden'}
+                </Button>
+              </div>
             </div>
           </form>
         </DialogContent>

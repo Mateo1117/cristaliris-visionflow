@@ -133,12 +133,15 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     else { refetchFotos(); toast.success('Foto eliminada'); }
   };
 
+  const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
+
   const printQR = () => {
     const svg = document.getElementById('qr-print-area');
     if (!svg) return;
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`<html><head><title>QR Orden</title><style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif}h3{margin:8px 0}</style></head><body>`);
+    w.document.write(`<html><head><title>QR ${numeroOrdenLabel}</title><style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif}h1{margin:4px 0;font-size:28px;letter-spacing:2px}h3{margin:8px 0}</style></head><body>`);
+    w.document.write(`<h1>${numeroOrdenLabel}</h1>`);
     w.document.write(`<h3>${item?.paciente_nombre}</h3><p style="font-size:12px">${item?.descripcion}</p><p style="font-size:10px">Lab: ${item?.laboratorio_nombre}</p>`);
     w.document.write(svg.outerHTML);
     w.document.write(`<p style="font-size:10px;margin-top:8px">${item?.id.slice(0, 8)}</p>`);
@@ -281,9 +284,11 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
             )}
           </TabsContent>
 
-          <TabsContent value="qr" className="flex flex-col items-center gap-4 py-4">
+          <TabsContent value="qr" className="flex flex-col items-center gap-3 py-4">
+            <div className="text-2xl font-bold tracking-widest text-primary">{numeroOrdenLabel}</div>
             <QRCodeSVG id="qr-print-area" value={qrUrl} size={200} />
             <p className="text-xs text-muted-foreground text-center break-all">{item.id.slice(0, 8)}</p>
+            {item.numero_montura && <p className="text-xs"># Montura: <span className="font-medium">{item.numero_montura}</span></p>}
             <Button onClick={printQR} variant="outline" size="sm"><Printer className="h-4 w-4 mr-1" />Imprimir QR</Button>
           </TabsContent>
 

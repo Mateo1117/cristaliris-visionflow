@@ -296,8 +296,14 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
 
           <TabsContent value="qr" className="flex flex-col items-center gap-3 py-4">
             <div className="text-2xl font-bold tracking-widest text-primary">{numeroOrdenLabel}</div>
-            <QRCodeSVG id="qr-print-area" value={qrUrl} size={200} />
-            <p className="text-xs text-muted-foreground text-center break-all">{item.id.slice(0, 8)}</p>
+            <QRCodeSVG
+              id="qr-print-area"
+              value={qrUrl}
+              size={256}
+              level="M"
+              includeMargin
+            />
+            <p className="text-[10px] text-muted-foreground text-center break-all font-mono">{item.id}</p>
             {item.numero_montura && <p className="text-xs"># Montura: <span className="font-medium">{item.numero_montura}</span></p>}
             <div className="flex flex-wrap gap-2 justify-center pt-2">
               <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta QR</Button>

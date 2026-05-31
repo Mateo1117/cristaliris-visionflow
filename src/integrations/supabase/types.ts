@@ -250,6 +250,50 @@ export type Database = {
           },
         ]
       }
+      empleados_nomina: {
+        Row: {
+          activo: boolean
+          cedula: string
+          celular: string | null
+          created_at: string
+          email: string | null
+          empresa_id: string
+          id: string
+          nombre: string
+          updated_at: string
+        }
+        Insert: {
+          activo?: boolean
+          cedula: string
+          celular?: string | null
+          created_at?: string
+          email?: string | null
+          empresa_id: string
+          id?: string
+          nombre: string
+          updated_at?: string
+        }
+        Update: {
+          activo?: boolean
+          cedula?: string
+          celular?: string | null
+          created_at?: string
+          email?: string | null
+          empresa_id?: string
+          id?: string
+          nombre?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empleados_nomina_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           contacto_rrhh: string | null
@@ -432,6 +476,8 @@ export type Database = {
           altura_pupilar_oi: number | null
           anamnesis: string | null
           antecedentes: string | null
+          av_sin_correccion_od: string | null
+          av_sin_correccion_oi: string | null
           codigo_cie10: string | null
           created_at: string
           diagnostico: string | null
@@ -441,6 +487,10 @@ export type Database = {
           distancia_vertice: number | null
           fecha_consulta: string
           firma_optometra: string | null
+          formula_control: string | null
+          formula_filtros: string | null
+          formula_forma_uso: string | null
+          formula_observaciones: string | null
           formula_od_adicion: number | null
           formula_od_cilindro: number | null
           formula_od_eje: number | null
@@ -449,8 +499,20 @@ export type Database = {
           formula_oi_cilindro: number | null
           formula_oi_eje: number | null
           formula_oi_esfera: number | null
+          formula_tipo_lente: string | null
           id: string
+          keratometria_od: string | null
+          keratometria_oi: string | null
+          lensometria_od_adicion: number | null
+          lensometria_od_cilindro: number | null
+          lensometria_od_eje: number | null
+          lensometria_od_esfera: number | null
+          lensometria_oi_adicion: number | null
+          lensometria_oi_cilindro: number | null
+          lensometria_oi_eje: number | null
+          lensometria_oi_esfera: number | null
           observaciones: string | null
+          ocupacion: string | null
           optometra_id: string | null
           paciente_id: string
           plan_manejo: string | null
@@ -465,6 +527,8 @@ export type Database = {
           altura_pupilar_oi?: number | null
           anamnesis?: string | null
           antecedentes?: string | null
+          av_sin_correccion_od?: string | null
+          av_sin_correccion_oi?: string | null
           codigo_cie10?: string | null
           created_at?: string
           diagnostico?: string | null
@@ -474,6 +538,10 @@ export type Database = {
           distancia_vertice?: number | null
           fecha_consulta?: string
           firma_optometra?: string | null
+          formula_control?: string | null
+          formula_filtros?: string | null
+          formula_forma_uso?: string | null
+          formula_observaciones?: string | null
           formula_od_adicion?: number | null
           formula_od_cilindro?: number | null
           formula_od_eje?: number | null
@@ -482,8 +550,20 @@ export type Database = {
           formula_oi_cilindro?: number | null
           formula_oi_eje?: number | null
           formula_oi_esfera?: number | null
+          formula_tipo_lente?: string | null
           id?: string
+          keratometria_od?: string | null
+          keratometria_oi?: string | null
+          lensometria_od_adicion?: number | null
+          lensometria_od_cilindro?: number | null
+          lensometria_od_eje?: number | null
+          lensometria_od_esfera?: number | null
+          lensometria_oi_adicion?: number | null
+          lensometria_oi_cilindro?: number | null
+          lensometria_oi_eje?: number | null
+          lensometria_oi_esfera?: number | null
           observaciones?: string | null
+          ocupacion?: string | null
           optometra_id?: string | null
           paciente_id: string
           plan_manejo?: string | null
@@ -498,6 +578,8 @@ export type Database = {
           altura_pupilar_oi?: number | null
           anamnesis?: string | null
           antecedentes?: string | null
+          av_sin_correccion_od?: string | null
+          av_sin_correccion_oi?: string | null
           codigo_cie10?: string | null
           created_at?: string
           diagnostico?: string | null
@@ -507,6 +589,10 @@ export type Database = {
           distancia_vertice?: number | null
           fecha_consulta?: string
           firma_optometra?: string | null
+          formula_control?: string | null
+          formula_filtros?: string | null
+          formula_forma_uso?: string | null
+          formula_observaciones?: string | null
           formula_od_adicion?: number | null
           formula_od_cilindro?: number | null
           formula_od_eje?: number | null
@@ -515,8 +601,20 @@ export type Database = {
           formula_oi_cilindro?: number | null
           formula_oi_eje?: number | null
           formula_oi_esfera?: number | null
+          formula_tipo_lente?: string | null
           id?: string
+          keratometria_od?: string | null
+          keratometria_oi?: string | null
+          lensometria_od_adicion?: number | null
+          lensometria_od_cilindro?: number | null
+          lensometria_od_eje?: number | null
+          lensometria_od_esfera?: number | null
+          lensometria_oi_adicion?: number | null
+          lensometria_oi_cilindro?: number | null
+          lensometria_oi_eje?: number | null
+          lensometria_oi_esfera?: number | null
           observaciones?: string | null
+          ocupacion?: string | null
           optometra_id?: string | null
           paciente_id?: string
           plan_manejo?: string | null
@@ -830,11 +928,14 @@ export type Database = {
           id: string
           laboratorio_id: string | null
           lente_tipo: string | null
+          medidas_progresivo: Json | null
           montura_id: string | null
+          numero_montura: string | null
           numero_orden_laboratorio: string | null
           observaciones: string | null
           orden_id: string
           precio_venta: number | null
+          producto_catalogo_id: string | null
           tipo_lente_tiempo: string | null
           tipo_producto: string
           updated_at: string
@@ -862,11 +963,14 @@ export type Database = {
           id?: string
           laboratorio_id?: string | null
           lente_tipo?: string | null
+          medidas_progresivo?: Json | null
           montura_id?: string | null
+          numero_montura?: string | null
           numero_orden_laboratorio?: string | null
           observaciones?: string | null
           orden_id: string
           precio_venta?: number | null
+          producto_catalogo_id?: string | null
           tipo_lente_tiempo?: string | null
           tipo_producto: string
           updated_at?: string
@@ -894,11 +998,14 @@ export type Database = {
           id?: string
           laboratorio_id?: string | null
           lente_tipo?: string | null
+          medidas_progresivo?: Json | null
           montura_id?: string | null
+          numero_montura?: string | null
           numero_orden_laboratorio?: string | null
           observaciones?: string | null
           orden_id?: string
           precio_venta?: number | null
+          producto_catalogo_id?: string | null
           tipo_lente_tiempo?: string | null
           tipo_producto?: string
           updated_at?: string
@@ -919,6 +1026,13 @@ export type Database = {
             referencedRelation: "ordenes"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "orden_productos_producto_catalogo_id_fkey"
+            columns: ["producto_catalogo_id"]
+            isOneToOne: false
+            referencedRelation: "productos_catalogo"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ordenes: {
@@ -928,11 +1042,14 @@ export type Database = {
           cotizacion_id: string | null
           created_at: string
           descuento_empresa: number | null
+          descuento_montura_propia: number
           descuento_porcentaje: number | null
           empresa_id: string | null
           estado_pago: string
           id: string
           modalidad_pago: string
+          montura_propia: boolean
+          numero_orden: number
           observaciones: string | null
           optometra_id: string | null
           paciente_id: string
@@ -950,11 +1067,14 @@ export type Database = {
           cotizacion_id?: string | null
           created_at?: string
           descuento_empresa?: number | null
+          descuento_montura_propia?: number
           descuento_porcentaje?: number | null
           empresa_id?: string | null
           estado_pago?: string
           id?: string
           modalidad_pago?: string
+          montura_propia?: boolean
+          numero_orden?: number
           observaciones?: string | null
           optometra_id?: string | null
           paciente_id: string
@@ -972,11 +1092,14 @@ export type Database = {
           cotizacion_id?: string | null
           created_at?: string
           descuento_empresa?: number | null
+          descuento_montura_propia?: number
           descuento_porcentaje?: number | null
           empresa_id?: string | null
           estado_pago?: string
           id?: string
           modalidad_pago?: string
+          montura_propia?: boolean
+          numero_orden?: number
           observaciones?: string | null
           optometra_id?: string | null
           paciente_id?: string
@@ -1020,6 +1143,10 @@ export type Database = {
           departamento: string | null
           direccion: string | null
           email: string | null
+          empleado_titular_cedula: string | null
+          empleado_titular_celular: string | null
+          empleado_titular_id: string | null
+          empleado_titular_nombre: string | null
           empresa_id: string | null
           es_fuera_bogota: boolean
           fecha_nacimiento: string | null
@@ -1029,6 +1156,7 @@ export type Database = {
           nombres: string
           numero_documento: string
           observaciones: string | null
+          ocupacion: string | null
           referido_por: string | null
           sede_registro: string | null
           telefono: string | null
@@ -1042,6 +1170,10 @@ export type Database = {
           departamento?: string | null
           direccion?: string | null
           email?: string | null
+          empleado_titular_cedula?: string | null
+          empleado_titular_celular?: string | null
+          empleado_titular_id?: string | null
+          empleado_titular_nombre?: string | null
           empresa_id?: string | null
           es_fuera_bogota?: boolean
           fecha_nacimiento?: string | null
@@ -1051,6 +1183,7 @@ export type Database = {
           nombres: string
           numero_documento: string
           observaciones?: string | null
+          ocupacion?: string | null
           referido_por?: string | null
           sede_registro?: string | null
           telefono?: string | null
@@ -1064,6 +1197,10 @@ export type Database = {
           departamento?: string | null
           direccion?: string | null
           email?: string | null
+          empleado_titular_cedula?: string | null
+          empleado_titular_celular?: string | null
+          empleado_titular_id?: string | null
+          empleado_titular_nombre?: string | null
           empresa_id?: string | null
           es_fuera_bogota?: boolean
           fecha_nacimiento?: string | null
@@ -1073,6 +1210,7 @@ export type Database = {
           nombres?: string
           numero_documento?: string
           observaciones?: string | null
+          ocupacion?: string | null
           referido_por?: string | null
           sede_registro?: string | null
           telefono?: string | null
@@ -1080,6 +1218,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pacientes_empleado_titular_id_fkey"
+            columns: ["empleado_titular_id"]
+            isOneToOne: false
+            referencedRelation: "empleados_nomina"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pacientes_empresa_id_fkey"
             columns: ["empresa_id"]
@@ -1095,6 +1240,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      productos_catalogo: {
+        Row: {
+          activo: boolean
+          aplica_descuento: boolean
+          categoria: string
+          created_at: string
+          id: string
+          nombre: string
+          orden_display: number
+          precio_full: number
+          updated_at: string
+        }
+        Insert: {
+          activo?: boolean
+          aplica_descuento?: boolean
+          categoria: string
+          created_at?: string
+          id?: string
+          nombre: string
+          orden_display?: number
+          precio_full?: number
+          updated_at?: string
+        }
+        Update: {
+          activo?: boolean
+          aplica_descuento?: boolean
+          categoria?: string
+          created_at?: string
+          id?: string
+          nombre?: string
+          orden_display?: number
+          precio_full?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {

@@ -161,6 +161,40 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     });
   };
 
+  const printLabelUsb = async () => {
+    if (!item) return;
+    try {
+      await printLabelUSB({
+        numero: numeroOrdenLabel || '',
+        qrPayload: item.id,
+        paciente: item.paciente_nombre,
+        descripcion: item.descripcion,
+        laboratorio: item.laboratorio_nombre,
+        numeroMontura: item.numero_montura || undefined,
+      });
+      toast.success('Etiqueta enviada por USB');
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const printReceiptUsb = async () => {
+    if (!item) return;
+    try {
+      await printReceiptUSB({
+        numero: numeroOrdenLabel || '',
+        paciente: item.paciente_nombre,
+        items: [{ descripcion: item.descripcion, cantidad: 1, precio: item.precio_venta || 0 }],
+        total: item.precio_venta || 0,
+        notas: `Lab: ${item.laboratorio_nombre}${item.numero_montura ? ' M:' + item.numero_montura : ''}`,
+      });
+      toast.success('Recibo enviado por USB');
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const pairUsb = async () => {
+    try { await pickUsbPrinter(); toast.success('Impresora USB vinculada'); }
+    catch (e: any) { if (e.name !== 'NotFoundError') toast.error(e.message); }
+  };
+
   const qrUrl = item ? `${window.location.origin}/scan?id=${item.id}` : '';
 
   if (!item) return null;

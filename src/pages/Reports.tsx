@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DeudaEmpresasCard } from '@/components/reports/DeudaEmpresasCard';
 import { Building2, Package, TrendingUp } from 'lucide-react';
+import { agregarProductos, calcularUtilidadPorLente } from '@/lib/reports/utilityCalc';
 
 const COLORS = ['hsl(210,80%,45%)', 'hsl(170,55%,42%)', 'hsl(260,60%,55%)', 'hsl(38,92%,50%)', 'hsl(0,72%,51%)', 'hsl(150,60%,40%)'];
 
@@ -72,43 +73,10 @@ export default function Reports() {
   });
   const topEmpresas = Array.from(empresaMap.values()).sort((a, b) => b.total - a.total).slice(0, 10);
 
-  // Producto más vendido (del catálogo, o descripción libre)
-  // Utilidad = precio_venta - (costo_laboratorio + costo_montura + costo_lente + costo_insumos + comision_financiera)
-  // Si utilidad_calculada está poblada (>0) la usamos; si no, la calculamos en vivo desde los costos.
-  const prodMap = new Map<string, { nombre: string; categoria: string; cantidad: number; ingreso: number; utilidad: number; costo: number }>();
-  productos.forEach((p: any) => {
-    const nombre = p.productos_catalogo?.nombre || p.descripcion || 'Sin nombre';
-    const categoria = p.productos_catalogo?.categoria || p.tipo_producto || 'otros';
-    const precio = Number(p.precio_venta) || 0;
-    const costoTotal =
-      (Number(p.costo_laboratorio) || 0) +
-      (Number(p.costo_montura) || 0) +
-      (Number(p.costo_lente) || 0) +
-      (Number(p.costo_insumos) || 0) +
-      (Number(p.comision_financiera) || 0);
-    const utilidadStored = Number(p.utilidad_calculada) || 0;
-    const utilidad = utilidadStored !== 0 ? utilidadStored : precio - costoTotal;
-    const cur = prodMap.get(nombre) || { nombre, categoria, cantidad: 0, ingreso: 0, utilidad: 0, costo: 0 };
-    cur.cantidad += 1;
-    cur.ingreso += precio;
-    cur.utilidad += utilidad;
-    cur.costo += costoTotal;
-    prodMap.set(nombre, cur);
-  });
-  const topProductos = Array.from(prodMap.values()).sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
-
-  // Utilidad por lente (solo tipo lente, ordenado por utilidad total desc)
-  // - Total utilidad: suma (precio_venta - costos) por cada lente vendido
-  // - Unitaria: utilidad total / cantidad vendida
-  // - Margen %: (utilidad / ingreso) * 100  → margen sobre venta
-  const lentes = topProductos
-    .filter(p => ['monofocal', 'bifocal', 'progresivo', 'lente_contacto', 'lente'].includes(p.categoria))
-    .map(p => ({
-      ...p,
-      utilidad_unitaria: p.cantidad > 0 ? p.utilidad / p.cantidad : 0,
-      margen: p.ingreso > 0 ? (p.utilidad / p.ingreso) * 100 : 0,
-    }))
-    .sort((a, b) => b.utilidad - a.utilidad);
+  // Productos agregados y utilidad por lente (lógica pura en utilityCalc.ts).
+  const productosAgg = agregarProductos(productos as any);
+  const topProductos = [...productosAgg].sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
+  const lentes = calcularUtilidadPorLente(productos as any);
 
   const categoriaLabel: Record<string, string> = {
     monofocal: 'Monofocal', bifocal: 'Bifocal', progresivo: 'Progresivo',

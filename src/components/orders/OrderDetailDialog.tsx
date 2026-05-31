@@ -12,7 +12,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
-import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2, Receipt, Tag } from 'lucide-react';
+import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
 
 interface Props {
   item: OrdenProducto | null;

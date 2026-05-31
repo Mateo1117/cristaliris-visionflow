@@ -340,9 +340,18 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
             />
             <p className="text-[10px] text-muted-foreground text-center break-all font-mono">{item.id}</p>
             {item.numero_montura && <p className="text-xs"># Montura: <span className="font-medium">{item.numero_montura}</span></p>}
-            <div className="flex flex-wrap gap-2 justify-center pt-2">
-              <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta QR</Button>
-              <Button onClick={printReceipt} variant="outline" size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo 80mm</Button>
+            <div className="w-full pt-2 space-y-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center">Driver del sistema</div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta QR</Button>
+                <Button onClick={printReceipt} variant="outline" size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo 80mm</Button>
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center pt-1">USB directo (sin drivers)</div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <Button onClick={printLabelUsb} size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta USB</Button>
+                <Button onClick={printReceiptUsb} size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo USB</Button>
+                <Button onClick={pairUsb} variant="ghost" size="sm"><Usb className="h-4 w-4 mr-1" />Vincular</Button>
+              </div>
             </div>
           </TabsContent>
 

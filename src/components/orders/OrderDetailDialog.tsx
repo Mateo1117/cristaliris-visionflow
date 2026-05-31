@@ -133,12 +133,15 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     else { refetchFotos(); toast.success('Foto eliminada'); }
   };
 
+  const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
+
   const printQR = () => {
     const svg = document.getElementById('qr-print-area');
     if (!svg) return;
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`<html><head><title>QR Orden</title><style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif}h3{margin:8px 0}</style></head><body>`);
+    w.document.write(`<html><head><title>QR ${numeroOrdenLabel}</title><style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif}h1{margin:4px 0;font-size:28px;letter-spacing:2px}h3{margin:8px 0}</style></head><body>`);
+    w.document.write(`<h1>${numeroOrdenLabel}</h1>`);
     w.document.write(`<h3>${item?.paciente_nombre}</h3><p style="font-size:12px">${item?.descripcion}</p><p style="font-size:10px">Lab: ${item?.laboratorio_nombre}</p>`);
     w.document.write(svg.outerHTML);
     w.document.write(`<p style="font-size:10px;margin-top:8px">${item?.id.slice(0, 8)}</p>`);

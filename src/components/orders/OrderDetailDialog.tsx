@@ -12,8 +12,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
-import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2, Receipt, Tag } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2, Receipt, Tag, Usb } from 'lucide-react';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
+import { printReceiptUSB, printLabelUSB, pickUsbPrinter } from '@/lib/printing/escpos';
 
 interface Props {
   item: OrdenProducto | null;
@@ -158,6 +159,40 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
       total: item.precio_venta || 0,
       notas: `Laboratorio: ${item.laboratorio_nombre}${item.numero_montura ? ` · Montura: ${item.numero_montura}` : ''}`,
     });
+  };
+
+  const printLabelUsb = async () => {
+    if (!item) return;
+    try {
+      await printLabelUSB({
+        numero: numeroOrdenLabel || '',
+        qrPayload: item.id,
+        paciente: item.paciente_nombre,
+        descripcion: item.descripcion,
+        laboratorio: item.laboratorio_nombre,
+        numeroMontura: item.numero_montura || undefined,
+      });
+      toast.success('Etiqueta enviada por USB');
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const printReceiptUsb = async () => {
+    if (!item) return;
+    try {
+      await printReceiptUSB({
+        numero: numeroOrdenLabel || '',
+        paciente: item.paciente_nombre,
+        items: [{ descripcion: item.descripcion, cantidad: 1, precio: item.precio_venta || 0 }],
+        total: item.precio_venta || 0,
+        notas: `Lab: ${item.laboratorio_nombre}${item.numero_montura ? ' M:' + item.numero_montura : ''}`,
+      });
+      toast.success('Recibo enviado por USB');
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const pairUsb = async () => {
+    try { await pickUsbPrinter(); toast.success('Impresora USB vinculada'); }
+    catch (e: any) { if (e.name !== 'NotFoundError') toast.error(e.message); }
   };
 
   const qrUrl = item ? `${window.location.origin}/scan?id=${item.id}` : '';
@@ -305,9 +340,18 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
             />
             <p className="text-[10px] text-muted-foreground text-center break-all font-mono">{item.id}</p>
             {item.numero_montura && <p className="text-xs"># Montura: <span className="font-medium">{item.numero_montura}</span></p>}
-            <div className="flex flex-wrap gap-2 justify-center pt-2">
-              <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta QR</Button>
-              <Button onClick={printReceipt} variant="outline" size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo 80mm</Button>
+            <div className="w-full pt-2 space-y-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center">Driver del sistema</div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta QR</Button>
+                <Button onClick={printReceipt} variant="outline" size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo 80mm</Button>
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center pt-1">USB directo (sin drivers)</div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <Button onClick={printLabelUsb} size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta USB</Button>
+                <Button onClick={printReceiptUsb} size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo USB</Button>
+                <Button onClick={pairUsb} variant="ghost" size="sm"><Usb className="h-4 w-4 mr-1" />Vincular</Button>
+              </div>
             </div>
           </TabsContent>
 

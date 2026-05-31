@@ -299,8 +299,10 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
             <QRCodeSVG id="qr-print-area" value={qrUrl} size={200} />
             <p className="text-xs text-muted-foreground text-center break-all">{item.id.slice(0, 8)}</p>
             {item.numero_montura && <p className="text-xs"># Montura: <span className="font-medium">{item.numero_montura}</span></p>}
-            <Button onClick={printQR} variant="outline" size="sm"><Printer className="h-4 w-4 mr-1" />Imprimir QR</Button>
-          </TabsContent>
+            <div className="flex flex-wrap gap-2 justify-center pt-2">
+              <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta QR</Button>
+              <Button onClick={printReceipt} variant="outline" size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo 80mm</Button>
+            </div>
 
           <TabsContent value="fotos" className="space-y-3">
             <div className="flex items-center gap-2">

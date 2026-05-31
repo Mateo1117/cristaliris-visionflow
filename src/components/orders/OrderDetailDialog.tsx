@@ -303,6 +303,8 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
               <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta QR</Button>
               <Button onClick={printReceipt} variant="outline" size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo 80mm</Button>
             </div>
+          </TabsContent>
+
 
           <TabsContent value="fotos" className="space-y-3">
             <div className="flex items-center gap-2">

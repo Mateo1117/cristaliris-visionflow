@@ -96,6 +96,7 @@ export const ESTADOS_PRODUCTO: { key: EstadoProducto; label: string }[] = [
 export interface OrdenProducto {
   id: string;
   orden_id: string;
+  numero_orden?: number | null;
   paciente_nombre: string;
   tipo_producto: 'lente' | 'montura' | 'insumo';
   tipo_lente_tiempo?: string | null;
@@ -114,6 +115,8 @@ export interface OrdenProducto {
   costo_insumos: number;
   comision_financiera: number;
   utilidad_calculada: number;
+  numero_montura?: string | null;
+  medidas_progresivo?: Record<string, any> | null;
 }
 
 export interface Orden {

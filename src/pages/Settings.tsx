@@ -387,12 +387,13 @@ function PrintSettingsTab() {
         onTest={testLabel}
       />
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={handleReset}>
+      <div className="flex justify-end items-center gap-2">
+        {loading && <span className="text-xs text-muted-foreground mr-auto">Cargando desde la base de datos…</span>}
+        <Button variant="outline" onClick={handleReset} disabled={saving || loading}>
           <RotateCcw className="h-4 w-4 mr-1" /> Restaurar predeterminados
         </Button>
-        <Button onClick={handleSave}>
-          <Save className="h-4 w-4 mr-1" /> Guardar parámetros
+        <Button onClick={handleSave} disabled={saving || loading}>
+          <Save className="h-4 w-4 mr-1" /> {saving ? 'Guardando…' : 'Guardar parámetros'}
         </Button>
       </div>
     </div>

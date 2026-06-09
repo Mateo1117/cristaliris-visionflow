@@ -44,6 +44,7 @@ export const loadPrintSettings = (): PrintSettings => {
     return {
       receipt: { ...DEFAULT_PRINT_SETTINGS.receipt, ...(parsed.receipt || {}) },
       label:   { ...DEFAULT_PRINT_SETTINGS.label,   ...(parsed.label   || {}) },
+      labelLayout: parsed.labelLayout || DEFAULT_PRINT_SETTINGS.labelLayout,
     };
   } catch {
     return DEFAULT_PRINT_SETTINGS;

@@ -12,6 +12,7 @@ import {
   type PrintSize,
   type Orientation,
 } from './printSettings';
+import { buildDefaultLayout, type LabelElement, type LabelField, type LabelLayout } from './labelLayout';
 
 const COMPANY = {
   nombre: 'Cristal Iris',

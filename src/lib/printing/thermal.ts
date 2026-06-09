@@ -71,71 +71,66 @@ export const printThermalReceipt = (data: ReceiptData) => {
   const sub = data.subtotal ?? data.items.reduce((s, i) => s + i.precio * (i.cantidad || 1), 0);
   const html = `
 <style>
-  @page { size: 3in 5in; margin: 0; }
+  /* Ticket 3 × 5 cm (30 × 50 mm) — térmica 203 dpi ≈ 240 × 400 dots */
+  @page { size: 30mm 50mm; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    width: 3in; height: 5in;
-    font-family: 'Courier New', ui-monospace, monospace;
-    font-size: 11px;
+    width: 30mm; height: 50mm;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 6.5pt;     /* ≈ 7 dots de alto, legible en 203 dpi */
     color: #000;
-    padding: 4mm 3mm 6mm;
-    line-height: 1.35;
+    padding: 1mm 1.2mm;
+    line-height: 1.15;
+    overflow: hidden;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  h1, h2, h3, p { margin: 0; }
   .center { text-align: center; }
-  .right { text-align: right; }
-  .b { font-weight: 700; }
-  .sm { font-size: 10px; }
-  .xs { font-size: 9px; }
-  .hr { border-top: 1px dashed #000; margin: 4px 0; }
-  table { width: 100%; border-collapse: collapse; }
-  td { vertical-align: top; padding: 1px 0; }
-  .head { font-size: 13px; font-weight: 800; letter-spacing: 1px; }
-  .total-row td { font-size: 13px; font-weight: 800; padding-top: 4px; }
+  .right  { text-align: right; }
+  .b      { font-weight: 700; }
+  .xs     { font-size: 5.5pt; }
+  .sm     { font-size: 6pt; }
+  .hr     { border-top: 1px dashed #000; margin: 0.6mm 0; }
+  .ellip  { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  table   { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  td      { vertical-align: top; padding: 0; font-size: 6pt; }
+  .head   { font-size: 8pt; font-weight: 800; letter-spacing: 0.3px; line-height: 1; }
+  .num    { font-size: 7.5pt; font-weight: 800; letter-spacing: 0.3px; }
+  .tot td { font-size: 8pt; font-weight: 800; padding-top: 0.3mm; }
+  .c-q { width: 10%; }
+  .c-d { width: 55%; }
+  .c-v { width: 35%; }
 </style>
 </head><body>
   <div class="center head">${COMPANY.nombre}</div>
-  <div class="center xs">${COMPANY.nit}</div>
-  <div class="center xs">${COMPANY.direccion}</div>
-  <div class="center xs">${COMPANY.telefono}</div>
+  <div class="center xs ellip">${COMPANY.nit}</div>
   <div class="hr"></div>
-  <div class="center b">${data.numero}</div>
+  <div class="center num">${data.numero}</div>
   <div class="center xs">${fmtFecha(data.fecha)}</div>
-  <div class="hr"></div>
-  ${data.paciente ? `<div><span class="b">Paciente:</span> ${data.paciente}</div>` : ''}
-  ${data.documento ? `<div class="xs">Doc: ${data.documento}</div>` : ''}
-  ${data.vendedor ? `<div class="xs">Atendió: ${data.vendedor}</div>` : ''}
+  ${data.paciente ? `<div class="sm ellip"><span class="b">Pac:</span> ${data.paciente}</div>` : ''}
   <div class="hr"></div>
   <table>
-    <thead>
-      <tr class="sm b">
-        <td>Cant</td><td>Descripción</td><td class="right">Valor</td>
-      </tr>
-    </thead>
     <tbody>
       ${data.items.map(i => `
         <tr>
-          <td class="sm">${i.cantidad || 1}</td>
-          <td class="sm">${i.descripcion}</td>
-          <td class="sm right">${fmtCOP(i.precio * (i.cantidad || 1))}</td>
+          <td class="c-q">${i.cantidad || 1}</td>
+          <td class="c-d ellip">${i.descripcion}</td>
+          <td class="c-v right">${fmtCOP(i.precio * (i.cantidad || 1))}</td>
         </tr>
       `).join('')}
     </tbody>
   </table>
   <div class="hr"></div>
   <table>
-    <tr><td>Subtotal</td><td class="right">${fmtCOP(sub)}</td></tr>
-    ${data.descuento ? `<tr><td>Descuento</td><td class="right">-${fmtCOP(data.descuento)}</td></tr>` : ''}
-    <tr class="total-row"><td>TOTAL</td><td class="right">${fmtCOP(data.total)}</td></tr>
-    ${data.abonado != null ? `<tr><td>Abonado</td><td class="right">${fmtCOP(data.abonado)}</td></tr>` : ''}
-    ${data.saldo != null ? `<tr class="b"><td>Saldo</td><td class="right">${fmtCOP(data.saldo)}</td></tr>` : ''}
+    <tr><td class="sm">Subtotal</td><td class="sm right">${fmtCOP(sub)}</td></tr>
+    ${data.descuento ? `<tr><td class="sm">Desc</td><td class="sm right">-${fmtCOP(data.descuento)}</td></tr>` : ''}
+    <tr class="tot"><td>TOTAL</td><td class="right">${fmtCOP(data.total)}</td></tr>
+    ${data.abonado != null ? `<tr><td class="sm">Abono</td><td class="sm right">${fmtCOP(data.abonado)}</td></tr>` : ''}
+    ${data.saldo != null ? `<tr class="b sm"><td>Saldo</td><td class="right">${fmtCOP(data.saldo)}</td></tr>` : ''}
   </table>
-  ${data.notas ? `<div class="hr"></div><div class="xs">${data.notas}</div>` : ''}
   <div class="hr"></div>
-  <div class="center xs">¡Gracias por su compra!</div>
-  <div class="center xs">Conserve este recibo</div>
-  <div style="height:8mm"></div>
+  <div class="center xs">¡Gracias!</div>
 </body></html>`;
   openPrintWindow(html, data.numero);
 };

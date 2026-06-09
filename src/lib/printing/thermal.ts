@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf';
 import {
   loadPrintSettings,
   type PrintSize,
+  type Orientation,
 } from './printSettings';
 
 const COMPANY = {
@@ -50,12 +51,18 @@ const clipText = (doc: jsPDF, txt: string, maxW: number): string => {
   return t + '…';
 };
 
-/** Resuelve el tamaño efectivo del PDF según la orientación elegida. */
+/** Resuelve el tamaño efectivo del PDF según la orientación elegida.
+ *  Si `rotateContent` está activo, intercambia W↔H y flipa la orientación,
+ *  para compensar drivers de impresoras térmicas que rotan automáticamente. */
 const resolveFormat = (size: PrintSize): { W: number; H: number; orientation: 'portrait' | 'landscape' } => {
-  const w = Math.max(20, size.widthMm);
-  const h = Math.max(20, size.heightMm);
-  // jsPDF: format = [width, height] en la orientación nativa
-  return { W: w, H: h, orientation: size.orientation };
+  let w = Math.max(20, size.widthMm);
+  let h = Math.max(20, size.heightMm);
+  let orientation: Orientation = size.orientation;
+  if (size.rotateContent) {
+    [w, h] = [h, w];
+    orientation = orientation === 'portrait' ? 'landscape' : 'portrait';
+  }
+  return { W: w, H: h, orientation };
 };
 
 // ───────────────────────────────────────────────────────────────────────────

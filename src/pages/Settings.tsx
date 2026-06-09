@@ -229,8 +229,14 @@ function PrintSettingsTab() {
     return () => { mounted = false; };
   }, []);
 
-  const update = (key: 'receipt' | 'label', field: 'widthMm' | 'heightMm' | 'orientation', value: any) => {
-    setSettings(prev => ({ ...prev, [key]: { ...prev[key], [field]: field === 'orientation' ? value : Number(value) || 0 } }));
+  const update = (key: 'receipt' | 'label', field: 'widthMm' | 'heightMm' | 'orientation' | 'rotateContent', value: any) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: field === 'orientation' ? value : field === 'rotateContent' ? Boolean(value) : (Number(value) || 0),
+      },
+    }));
   };
 
   const handleSave = async () => {
@@ -340,6 +346,18 @@ function PrintSettingsTab() {
             </div>
           </div>
 
+          <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={!!s.rotateContent}
+              onChange={(e) => update(sizeKey, 'rotateContent', e.target.checked)}
+            />
+            <span>
+              Rotar contenido 90° <span className="text-xs text-muted-foreground">(usar si la impresora saca el contenido de lado)</span>
+            </span>
+          </label>
+
           <div className="flex flex-wrap gap-2">
             {PRESETS.filter(p => p.target === sizeKey).map(p => (
               <Button key={p.label} type="button" size="sm" variant="outline" onClick={() => applyPreset(p)}>
@@ -350,7 +368,7 @@ function PrintSettingsTab() {
 
           <div className="flex justify-between items-center pt-2 border-t">
             <span className="text-xs text-muted-foreground">
-              Vista PDF: {s.widthMm} × {s.heightMm} mm ({s.orientation === 'portrait' ? 'vertical' : 'horizontal'})
+              Vista PDF: {s.widthMm} × {s.heightMm} mm ({s.orientation === 'portrait' ? 'vertical' : 'horizontal'}){s.rotateContent ? ' · rotado 90°' : ''}
             </span>
             <Button type="button" size="sm" onClick={onTest}>
               <Printer className="h-4 w-4 mr-1" /> Imprimir prueba

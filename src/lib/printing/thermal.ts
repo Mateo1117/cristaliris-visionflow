@@ -71,11 +71,11 @@ export const printThermalReceipt = (data: ReceiptData) => {
   const sub = data.subtotal ?? data.items.reduce((s, i) => s + i.precio * (i.cantidad || 1), 0);
   const html = `
 <style>
-  @page { size: 80mm auto; margin: 0; }
+  @page { size: 3in 5in; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
-    width: 80mm;
+    width: 3in; height: 5in;
     font-family: 'Courier New', ui-monospace, monospace;
     font-size: 11px;
     color: #000;

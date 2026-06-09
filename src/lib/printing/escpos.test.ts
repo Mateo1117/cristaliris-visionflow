@@ -119,6 +119,7 @@ describe('WebUSB connection', () => {
     const { pickUsbPrinter } = await import('./escpos');
     const d = await pickUsbPrinter();
     expect(d.vendorId).toBe(0x0483);
+    expect((navigator.usb as any).requestDevice).toHaveBeenCalledWith({ filters: [] });
     const stored = JSON.parse(localStorage.getItem('thermal-usb-printer') || '{}');
     expect(stored).toEqual({ vendorId: 0x0483, productId: 0x5743 });
   });

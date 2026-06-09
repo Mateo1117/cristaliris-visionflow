@@ -74,6 +74,9 @@ const rowToSettings = (row: any): PrintSettings => ({
     orientation: (row.label_orientation === 'landscape' ? 'landscape' : 'portrait'),
     rotateContent: Boolean(row.label_rotate_content),
   },
+  labelLayout: row.label_layout && typeof row.label_layout === 'object'
+    ? (row.label_layout as LabelLayout)
+    : buildDefaultLayout(Number(row.label_width_mm) || 30, Number(row.label_height_mm) || 40),
 });
 
 /** Lee los parámetros desde la BD y refresca la caché. */

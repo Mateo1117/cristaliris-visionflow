@@ -1,13 +1,20 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
 import { Header } from './Header';
+import { fetchPrintSettings } from '@/lib/printing/printSettings';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  // Rehidrata la caché local de parámetros de impresión desde la BD
+  // al entrar a cualquier vista que use el layout principal.
+  useEffect(() => {
+    fetchPrintSettings().catch(() => {/* offline o sin permisos: usa caché */});
+  }, []);
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">

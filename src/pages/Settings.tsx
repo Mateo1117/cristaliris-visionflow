@@ -198,3 +198,177 @@ export default function SettingsPage() {
     </AppLayout>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pestaña: Configuración de tamaños de impresión (auto-ajuste)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PRESETS: Array<{ label: string; widthMm: number; heightMm: number; orientation: Orientation; target: 'receipt' | 'label' | 'both' }> = [
+  { label: 'Ticket 30×50 (térmico)',    widthMm: 30, heightMm: 50, orientation: 'portrait',  target: 'receipt' },
+  { label: 'Ticket 58×80 (térmico)',    widthMm: 58, heightMm: 80, orientation: 'portrait',  target: 'receipt' },
+  { label: 'Ticket 80×120 (térmico)',   widthMm: 80, heightMm: 120, orientation: 'portrait', target: 'receipt' },
+  { label: 'Etiqueta 60×40 (QR lateral)', widthMm: 60, heightMm: 40, orientation: 'landscape', target: 'label' },
+  { label: 'Etiqueta 40×30 (mini)',     widthMm: 40, heightMm: 30, orientation: 'landscape', target: 'label' },
+  { label: 'Etiqueta 50×50 (cuadrada)', widthMm: 50, heightMm: 50, orientation: 'portrait',  target: 'label' },
+  { label: 'Etiqueta 100×50 (ancha)',   widthMm: 100, heightMm: 50, orientation: 'landscape', target: 'label' },
+];
+
+function PrintSettingsTab() {
+  const [settings, setSettings] = useState<PrintSettings>(DEFAULT_PRINT_SETTINGS);
+
+  useEffect(() => { setSettings(loadPrintSettings()); }, []);
+
+  const update = (key: 'receipt' | 'label', field: 'widthMm' | 'heightMm' | 'orientation', value: any) => {
+    setSettings(prev => ({ ...prev, [key]: { ...prev[key], [field]: field === 'orientation' ? value : Number(value) || 0 } }));
+  };
+
+  const handleSave = () => {
+    savePrintSettings(settings);
+    toast.success('Parámetros de impresión guardados');
+  };
+
+  const handleReset = () => {
+    resetPrintSettings();
+    setSettings(DEFAULT_PRINT_SETTINGS);
+    toast.success('Valores restaurados a los predeterminados');
+  };
+
+  const applyPreset = (p: typeof PRESETS[number]) => {
+    setSettings(prev => {
+      if (p.target === 'receipt') return { ...prev, receipt: { widthMm: p.widthMm, heightMm: p.heightMm, orientation: p.orientation } };
+      if (p.target === 'label')   return { ...prev, label:   { widthMm: p.widthMm, heightMm: p.heightMm, orientation: p.orientation } };
+      return prev;
+    });
+  };
+
+  const testReceipt = () => {
+    savePrintSettings(settings);
+    printThermalReceipt({
+      numero: 'PRUEBA-0001',
+      fecha: new Date(),
+      paciente: 'Paciente de prueba',
+      items: [
+        { descripcion: 'Lente progresivo', cantidad: 1, precio: 350000 },
+        { descripcion: 'Montura Ray-Ban', cantidad: 1, precio: 280000 },
+      ],
+      total: 630000,
+      abonado: 300000,
+      saldo: 330000,
+    });
+  };
+
+  const testLabel = async () => {
+    savePrintSettings(settings);
+    // QR simple de prueba en SVG (un cuadrado negro con borde)
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#fff"/><rect x="10" y="10" width="80" height="80" fill="#000"/><rect x="25" y="25" width="50" height="50" fill="#fff"/><rect x="40" y="40" width="20" height="20" fill="#000"/></svg>`;
+    await printThermalLabel({
+      numero: 'ORD-0001',
+      qrSvg: svg,
+      paciente: 'Paciente Prueba',
+      descripcion: 'Lente progresivo AR',
+      laboratorio: 'Lab Óptico',
+      numeroMontura: 'M-123',
+    });
+  };
+
+  const SizeCard = ({
+    title,
+    description,
+    sizeKey,
+    onTest,
+  }: {
+    title: string;
+    description: string;
+    sizeKey: 'receipt' | 'label';
+    onTest: () => void;
+  }) => {
+    const s = settings[sizeKey];
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{title}</CardTitle>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Ancho (mm)</Label>
+              <Input type="number" min={20} max={210} value={s.widthMm}
+                onChange={(e) => update(sizeKey, 'widthMm', e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Alto (mm)</Label>
+              <Input type="number" min={20} max={297} value={s.heightMm}
+                onChange={(e) => update(sizeKey, 'heightMm', e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Orientación</Label>
+              <select
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={s.orientation}
+                onChange={(e) => update(sizeKey, 'orientation', e.target.value as Orientation)}
+              >
+                <option value="portrait">Vertical</option>
+                <option value="landscape">Horizontal</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {PRESETS.filter(p => p.target === sizeKey).map(p => (
+              <Button key={p.label} type="button" size="sm" variant="outline" onClick={() => applyPreset(p)}>
+                {p.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex justify-between items-center pt-2 border-t">
+            <span className="text-xs text-muted-foreground">
+              Vista PDF: {s.widthMm} × {s.heightMm} mm ({s.orientation === 'portrait' ? 'vertical' : 'horizontal'})
+            </span>
+            <Button type="button" size="sm" onClick={onTest}>
+              <Printer className="h-4 w-4 mr-1" /> Imprimir prueba
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="pt-6 text-sm text-muted-foreground">
+          Define el tamaño exacto del medio (en milímetros). El contenido (fuentes,
+          paddings y QR) se <strong>auto-ajusta</strong> a las dimensiones elegidas.
+          En el diálogo de impresión selecciona la impresora térmica con
+          <span className="px-1 font-medium">Escala = 100%</span> y
+          <span className="px-1 font-medium">Márgenes = Ninguno</span>.
+        </CardContent>
+      </Card>
+
+      <SizeCard
+        title="Ticket / Recibo"
+        description="Tamaño del ticket de venta impreso desde la orden."
+        sizeKey="receipt"
+        onTest={testReceipt}
+      />
+
+      <SizeCard
+        title="Etiqueta con QR"
+        description="Tamaño de la etiqueta con código QR para trazabilidad."
+        sizeKey="label"
+        onTest={testLabel}
+      />
+
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={handleReset}>
+          <RotateCcw className="h-4 w-4 mr-1" /> Restaurar predeterminados
+        </Button>
+        <Button onClick={handleSave}>
+          <Save className="h-4 w-4 mr-1" /> Guardar parámetros
+        </Button>
+      </div>
+    </div>
+  );
+}

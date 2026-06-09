@@ -8,11 +8,20 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Building2, Beaker } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, Building2, Beaker, Printer, RotateCcw, Save } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  loadPrintSettings,
+  savePrintSettings,
+  resetPrintSettings,
+  DEFAULT_PRINT_SETTINGS,
+  type PrintSettings,
+  type Orientation,
+} from '@/lib/printing/printSettings';
+import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
 
 export default function SettingsPage() {
   const [showSedeForm, setShowSedeForm] = useState(false);
@@ -89,7 +98,12 @@ export default function SettingsPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="sedes">Sedes</TabsTrigger>
           <TabsTrigger value="laboratorios">Laboratorios</TabsTrigger>
+          <TabsTrigger value="impresion"><Printer className="h-4 w-4 mr-1" />Impresión</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="impresion">
+          <PrintSettingsTab />
+        </TabsContent>
 
         <TabsContent value="sedes">
           <div className="flex justify-end mb-3">

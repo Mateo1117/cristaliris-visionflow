@@ -12,9 +12,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
-import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2, Receipt, Tag, Usb } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2, Receipt, Tag, Usb, Pencil, X } from 'lucide-react';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
 import { printReceiptUSB, printLabelUSB, pickUsbPrinter } from '@/lib/printing/escpos';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Props {
   item: OrdenProducto | null;

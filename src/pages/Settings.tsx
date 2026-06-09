@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import {
   loadPrintSettings,
   savePrintSettings,
+  fetchPrintSettings,
   resetPrintSettings,
   DEFAULT_PRINT_SETTINGS,
   type PrintSettings,

@@ -314,25 +314,95 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="detalle" className="space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <div><span className="text-muted-foreground">Producto:</span> {item.tipo_producto}</div>
-              <div><span className="text-muted-foreground">Lab:</span> {item.laboratorio_nombre}</div>
-            </div>
-            <div><span className="text-muted-foreground">Descripción:</span> {item.descripcion}</div>
-            {item.es_garantia && <Badge variant="outline" className="text-yellow-600">Garantía</Badge>}
-            {item.es_reproceso && <Badge variant="outline" className="text-red-600">Reproceso</Badge>}
-            {alertLevel !== 'ok' && (
-              <Card className={`border-${alertLevel === 'destructive' ? 'destructive' : 'yellow-500'}`}>
-                <CardContent className="p-3 text-xs">
-                  <AlertTriangle className={`h-4 w-4 inline mr-1 ${alertLevel === 'destructive' ? 'text-destructive' : 'text-yellow-500'}`} />
-                  {alertLevel === 'destructive'
-                    ? `⚠️ Excedido: ${item.dias_en_estado - item.tiempo_esperado_dias} día(s) de retraso`
-                    : `⏳ Próximo a vencer: ${item.tiempo_esperado_dias - item.dias_en_estado} día(s) restantes`}
-                </CardContent>
-              </Card>
+          <TabsContent value="detalle" className="space-y-3 text-sm">
+            {!editingOrder ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="text-muted-foreground">Producto:</span> {item.tipo_producto}</div>
+                  <div><span className="text-muted-foreground">Lab:</span> {item.laboratorio_nombre}</div>
+                </div>
+                <div><span className="text-muted-foreground">Descripción:</span> {item.descripcion}</div>
+                {item.numero_montura && <div><span className="text-muted-foreground"># Montura:</span> {item.numero_montura}</div>}
+                <div className="flex gap-2 flex-wrap">
+                  {item.es_garantia && <Badge variant="outline" className="text-yellow-600">Garantía</Badge>}
+                  {item.es_reproceso && <Badge variant="outline" className="text-red-600">Reproceso</Badge>}
+                </div>
+                {alertLevel !== 'ok' && (
+                  <Card className={`border-${alertLevel === 'destructive' ? 'destructive' : 'yellow-500'}`}>
+                    <CardContent className="p-3 text-xs">
+                      <AlertTriangle className={`h-4 w-4 inline mr-1 ${alertLevel === 'destructive' ? 'text-destructive' : 'text-yellow-500'}`} />
+                      {alertLevel === 'destructive'
+                        ? `⚠️ Excedido: ${item.dias_en_estado - item.tiempo_esperado_dias} día(s) de retraso`
+                        : `⏳ Próximo a vencer: ${item.tiempo_esperado_dias - item.dias_en_estado} día(s) restantes`}
+                    </CardContent>
+                  </Card>
+                )}
+                <Button onClick={startEditOrder} variant="outline" size="sm" className="w-full">
+                  <Pencil className="h-4 w-4 mr-1" />Editar Orden
+                </Button>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Tipo de Producto</Label>
+                    <Select value={orderEdit.tipo_producto} onValueChange={(v: any) => setOrderEdit(p => ({ ...p, tipo_producto: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="lente">Lente</SelectItem>
+                        <SelectItem value="montura">Montura</SelectItem>
+                        <SelectItem value="insumo">Insumo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Laboratorio</Label>
+                    <Select value={orderEdit.laboratorio_id || 'none'} onValueChange={(v) => setOrderEdit(p => ({ ...p, laboratorio_id: v === 'none' ? null : v }))}>
+                      <SelectTrigger><SelectValue placeholder="N/A" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">N/A</SelectItem>
+                        {laboratorios.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.nombre}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Descripción</Label>
+                  <Textarea rows={2} value={orderEdit.descripcion} onChange={(e) => setOrderEdit(p => ({ ...p, descripcion: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs"># Montura</Label>
+                    <Input value={orderEdit.numero_montura} onChange={(e) => setOrderEdit(p => ({ ...p, numero_montura: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Tipo Lente / Tiempo</Label>
+                    <Input value={orderEdit.tipo_lente_tiempo} onChange={(e) => setOrderEdit(p => ({ ...p, tipo_lente_tiempo: e.target.value }))} placeholder="monofocal, progresivo..." />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Observaciones</Label>
+                  <Textarea rows={2} value={orderEdit.observaciones} onChange={(e) => setOrderEdit(p => ({ ...p, observaciones: e.target.value }))} />
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-2">
+                  <Label className="text-xs">Garantía</Label>
+                  <Switch checked={orderEdit.es_garantia} onCheckedChange={(v) => setOrderEdit(p => ({ ...p, es_garantia: v }))} />
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-2">
+                  <Label className="text-xs">Reproceso</Label>
+                  <Switch checked={orderEdit.es_reproceso} onCheckedChange={(v) => setOrderEdit(p => ({ ...p, es_reproceso: v }))} />
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setEditingOrder(false)}><X className="h-4 w-4 mr-1" />Cancelar</Button>
+                  <Button className="flex-1" onClick={() => saveOrder.mutate()} disabled={saveOrder.isPending}>
+                    {saveOrder.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                    Guardar
+                  </Button>
+                </div>
+              </div>
             )}
           </TabsContent>
+
 
           {/* COSTS TAB */}
           <TabsContent value="costos" className="space-y-4 py-2">

@@ -17,8 +17,10 @@
 
 const STORAGE_KEY = 'thermal-usb-printer';
 
-// VID conocidos de impresoras térmicas POS / Jaltech / clones
-const KNOWN_FILTERS: USBDeviceFilter[] = [
+// VID conocidos de impresoras térmicas POS / Jaltech / clones + clase USB Printer.
+// Algunas JAL-838L se anuncian solo como clase 0x07 y no por un VID conocido.
+const PRINTER_FILTERS: USBDeviceFilter[] = [
+  { classCode: 0x07 }, // USB Printer class
   { vendorId: 0x0483 }, // STMicro (Jaltech y muchos clones)
   { vendorId: 0x0416 }, // Winbond
   { vendorId: 0x0fe6 }, // ICS Advent
@@ -26,6 +28,10 @@ const KNOWN_FILTERS: USBDeviceFilter[] = [
   { vendorId: 0x0519 }, // Star
   { vendorId: 0x154f }, // SNBC
   { vendorId: 0x1a86 }, // QinHeng (CH34x)
+  { vendorId: 0x0525 }, // NetChip / Linux USB gadget
+  { vendorId: 0x067b }, // Prolific
+  { vendorId: 0x10c4 }, // Silicon Labs CP210x
+  { vendorId: 0x1fc9 }, // NXP / clones POS
   { vendorId: 0x6868 }, // Genéricos POS
   { vendorId: 0x28e9 }, // Genéricos POS
 ];
@@ -38,7 +44,24 @@ export const pickUsbPrinter = async (): Promise<USBDevice> => {
   if (!isWebUsbAvailable()) {
     throw new Error('Tu navegador no soporta WebUSB. Usa Chrome o Edge.');
   }
-  const device = await navigator.usb.requestDevice({ filters: KNOWN_FILTERS });
+  let device: USBDevice;
+  try {
+    device = await navigator.usb.requestDevice({ filters: PRINTER_FILTERS });
+  } catch (e: any) {
+    if (e?.name !== 'NotFoundError') throw e;
+    try {
+      // Segundo intento: mostrar todos los dispositivos WebUSB permitidos por Chrome.
+      // Esto cubre impresoras térmicas que reportan descriptores no estándar.
+      device = await navigator.usb.requestDevice({ filters: [] });
+    } catch (fallback: any) {
+      const err: any = new Error(
+        'Chrome no encontró la impresora por USB. Verifica que esté encendida, conectada con cable USB de datos y que Windows la reconozca. ' +
+        'Si sigue sin aparecer, usa Etiqueta PDF/Recibo PDF o libera la interfaz con WinUSB/Zadig.'
+      );
+      err.name = fallback?.name || 'NotFoundError';
+      throw err;
+    }
+  }
   // Recordar VID/PID para reconexión silenciosa
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     vendorId: device.vendorId, productId: device.productId,
@@ -60,21 +83,38 @@ const findAuthorizedDevice = async (): Promise<USBDevice | null> => {
 
 const openPrinter = async (device: USBDevice): Promise<{ device: USBDevice; endpoint: number }> => {
   if (!device.opened) await device.open();
-  if (device.configuration === null) await device.selectConfiguration(1);
-  // Buscar primera interfaz con endpoint OUT bulk
-  const iface = device.configuration!.interfaces.find(i =>
-    i.alternates.some(a => a.endpoints.some(e => e.direction === 'out' && e.type === 'bulk'))
-  );
-  if (!iface) throw new Error('No se encontró endpoint USB de salida en la impresora.');
-  try { await device.claimInterface(iface.interfaceNumber); }
+  if (device.configuration === null) {
+    const configValue = device.configurations?.[0]?.configurationValue ?? 1;
+    await device.selectConfiguration(configValue);
+  }
+  // Buscar primera interfaz con endpoint OUT bulk.
+  let ifaceNumber: number | null = null;
+  let alternateSetting: number | undefined;
+  let endpointNumber: number | null = null;
+  for (const iface of device.configuration!.interfaces) {
+    const alternate = iface.alternates.find(a => a.endpoints.some(e => e.direction === 'out' && e.type === 'bulk'));
+    const endpoint = alternate?.endpoints.find(e => e.direction === 'out' && e.type === 'bulk');
+    if (alternate && endpoint) {
+      ifaceNumber = iface.interfaceNumber;
+      alternateSetting = alternate.alternateSetting;
+      endpointNumber = endpoint.endpointNumber;
+      break;
+    }
+  }
+  if (ifaceNumber == null || endpointNumber == null) throw new Error('No se encontró endpoint USB de salida en la impresora.');
+  try {
+    await device.claimInterface(ifaceNumber);
+    if (alternateSetting != null && alternateSetting !== 0 && 'selectAlternateInterface' in device) {
+      await device.selectAlternateInterface(ifaceNumber, alternateSetting);
+    }
+  }
   catch (e: any) {
     throw new Error(
       'No se pudo reclamar la interfaz USB. ' +
       'Desinstala el driver del fabricante en Windows o usa Zadig (WinUSB) para liberarla.'
     );
   }
-  const endpoint = iface.alternates[0].endpoints.find(e => e.direction === 'out' && e.type === 'bulk')!;
-  return { device, endpoint: endpoint.endpointNumber };
+  return { device, endpoint: endpointNumber };
 };
 
 const getConnection = async (forcePicker = false) => {

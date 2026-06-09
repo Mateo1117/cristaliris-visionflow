@@ -46,21 +46,17 @@ export const pickUsbPrinter = async (): Promise<USBDevice> => {
   }
   let device: USBDevice;
   try {
-    device = await navigator.usb.requestDevice({ filters: PRINTER_FILTERS });
+    // Usamos el chooser amplio porque muchas impresoras térmicas/clones no reportan
+    // VID/clase estándar y Chrome muestra “No hay dispositivos compatibles”.
+    device = await navigator.usb.requestDevice({ filters: [] });
   } catch (e: any) {
     if (e?.name !== 'NotFoundError') throw e;
-    try {
-      // Segundo intento: mostrar todos los dispositivos WebUSB permitidos por Chrome.
-      // Esto cubre impresoras térmicas que reportan descriptores no estándar.
-      device = await navigator.usb.requestDevice({ filters: [] });
-    } catch (fallback: any) {
-      const err: any = new Error(
-        'Chrome no encontró la impresora por USB. Verifica que esté encendida, conectada con cable USB de datos y que Windows la reconozca. ' +
-        'Si sigue sin aparecer, usa Etiqueta PDF/Recibo PDF o libera la interfaz con WinUSB/Zadig.'
-      );
-      err.name = fallback?.name || 'NotFoundError';
-      throw err;
-    }
+    const err: any = new Error(
+      'Chrome no encontró la impresora por USB. Verifica que esté encendida, conectada con cable USB de datos y que Windows la reconozca. ' +
+      'Si sigue sin aparecer, usa Etiqueta PDF/Recibo PDF o libera la interfaz con WinUSB/Zadig.'
+    );
+    err.name = e.name;
+    throw err;
   }
   // Recordar VID/PID para reconexión silenciosa
   localStorage.setItem(STORAGE_KEY, JSON.stringify({

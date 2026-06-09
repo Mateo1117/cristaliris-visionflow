@@ -15,6 +15,8 @@ export interface PrintSize {
   widthMm: number;
   heightMm: number;
   orientation: Orientation;
+  /** Pre-rota el contenido 90° para compensar el driver de impresoras que rotan automáticamente. */
+  rotateContent?: boolean;
 }
 
 export interface PrintSettings {
@@ -25,8 +27,8 @@ export interface PrintSettings {
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   // Rollo térmico de 30 mm (JAL-838L). El ancho debe coincidir con el rollo
   // físico montado o el contenido sale recortado o con espacio en blanco.
-  receipt: { widthMm: 30, heightMm: 50, orientation: 'portrait' },
-  label:   { widthMm: 30, heightMm: 40, orientation: 'portrait' },
+  receipt: { widthMm: 30, heightMm: 50, orientation: 'portrait', rotateContent: false },
+  label:   { widthMm: 30, heightMm: 40, orientation: 'portrait', rotateContent: false },
 };
 
 const KEY = 'cristaliris.printSettings.v1';
@@ -61,11 +63,13 @@ const rowToSettings = (row: any): PrintSettings => ({
     widthMm: Number(row.receipt_width_mm) || DEFAULT_PRINT_SETTINGS.receipt.widthMm,
     heightMm: Number(row.receipt_height_mm) || DEFAULT_PRINT_SETTINGS.receipt.heightMm,
     orientation: (row.receipt_orientation === 'landscape' ? 'landscape' : 'portrait'),
+    rotateContent: Boolean(row.receipt_rotate_content),
   },
   label: {
     widthMm: Number(row.label_width_mm) || DEFAULT_PRINT_SETTINGS.label.widthMm,
     heightMm: Number(row.label_height_mm) || DEFAULT_PRINT_SETTINGS.label.heightMm,
     orientation: (row.label_orientation === 'landscape' ? 'landscape' : 'portrait'),
+    rotateContent: Boolean(row.label_rotate_content),
   },
 });
 
@@ -91,25 +95,27 @@ export const savePrintSettings = async (s: PrintSettings): Promise<void> => {
     .eq('singleton', true)
     .maybeSingle();
 
-  const payload = {
+  const payload: Record<string, any> = {
     receipt_width_mm: s.receipt.widthMm,
     receipt_height_mm: s.receipt.heightMm,
     receipt_orientation: s.receipt.orientation,
+    receipt_rotate_content: !!s.receipt.rotateContent,
     label_width_mm: s.label.widthMm,
     label_height_mm: s.label.heightMm,
     label_orientation: s.label.orientation,
+    label_rotate_content: !!s.label.rotateContent,
   };
 
   if (existing?.id) {
     const { error } = await supabase
       .from('print_settings')
-      .update(payload)
+      .update(payload as any)
       .eq('id', existing.id);
     if (error) throw error;
   } else {
     const { error } = await supabase
       .from('print_settings')
-      .insert({ singleton: true, ...payload });
+      .insert({ singleton: true, ...payload } as any);
     if (error) throw error;
   }
 };

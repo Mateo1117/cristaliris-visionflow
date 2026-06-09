@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import {
   loadPrintSettings,
   savePrintSettings,
+  fetchPrintSettings,
   resetPrintSettings,
   DEFAULT_PRINT_SETTINGS,
   type PrintSettings,
@@ -214,23 +215,48 @@ const PRESETS: Array<{ label: string; widthMm: number; heightMm: number; orienta
 ];
 
 function PrintSettingsTab() {
-  const [settings, setSettings] = useState<PrintSettings>(DEFAULT_PRINT_SETTINGS);
+  const [settings, setSettings] = useState<PrintSettings>(() => loadPrintSettings());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setSettings(loadPrintSettings()); }, []);
+  // Carga inicial desde la BD (rehidrata caché) y refresca el estado.
+  useEffect(() => {
+    let mounted = true;
+    fetchPrintSettings()
+      .then(s => { if (mounted) setSettings(s); })
+      .catch(() => {/* mantiene caché */})
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, []);
 
   const update = (key: 'receipt' | 'label', field: 'widthMm' | 'heightMm' | 'orientation', value: any) => {
     setSettings(prev => ({ ...prev, [key]: { ...prev[key], [field]: field === 'orientation' ? value : Number(value) || 0 } }));
   };
 
-  const handleSave = () => {
-    savePrintSettings(settings);
-    toast.success('Parámetros de impresión guardados');
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await savePrintSettings(settings);
+      toast.success('Parámetros de impresión guardados');
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo guardar en la base de datos');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleReset = () => {
-    resetPrintSettings();
-    setSettings(DEFAULT_PRINT_SETTINGS);
-    toast.success('Valores restaurados a los predeterminados');
+  const handleReset = async () => {
+    setSaving(true);
+    try {
+      await savePrintSettings(DEFAULT_PRINT_SETTINGS);
+      resetPrintSettings();
+      setSettings(DEFAULT_PRINT_SETTINGS);
+      toast.success('Valores restaurados a los predeterminados');
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo restaurar');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const applyPreset = (p: typeof PRESETS[number]) => {
@@ -241,8 +267,8 @@ function PrintSettingsTab() {
     });
   };
 
-  const testReceipt = () => {
-    savePrintSettings(settings);
+  const testReceipt = async () => {
+    try { await savePrintSettings(settings); } catch {/* sigue con caché */}
     printThermalReceipt({
       numero: 'PRUEBA-0001',
       fecha: new Date(),
@@ -258,8 +284,7 @@ function PrintSettingsTab() {
   };
 
   const testLabel = async () => {
-    savePrintSettings(settings);
-    // QR simple de prueba en SVG (un cuadrado negro con borde)
+    try { await savePrintSettings(settings); } catch {/* sigue con caché */}
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#fff"/><rect x="10" y="10" width="80" height="80" fill="#000"/><rect x="25" y="25" width="50" height="50" fill="#fff"/><rect x="40" y="40" width="20" height="20" fill="#000"/></svg>`;
     await printThermalLabel({
       numero: 'ORD-0001',
@@ -270,6 +295,7 @@ function PrintSettingsTab() {
       numeroMontura: 'M-123',
     });
   };
+
 
   const SizeCard = ({
     title,
@@ -361,12 +387,13 @@ function PrintSettingsTab() {
         onTest={testLabel}
       />
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={handleReset}>
+      <div className="flex justify-end items-center gap-2">
+        {loading && <span className="text-xs text-muted-foreground mr-auto">Cargando desde la base de datos…</span>}
+        <Button variant="outline" onClick={handleReset} disabled={saving || loading}>
           <RotateCcw className="h-4 w-4 mr-1" /> Restaurar predeterminados
         </Button>
-        <Button onClick={handleSave}>
-          <Save className="h-4 w-4 mr-1" /> Guardar parámetros
+        <Button onClick={handleSave} disabled={saving || loading}>
+          <Save className="h-4 w-4 mr-1" /> {saving ? 'Guardando…' : 'Guardar parámetros'}
         </Button>
       </div>
     </div>

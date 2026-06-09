@@ -23,8 +23,10 @@ export interface PrintSettings {
 }
 
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
+  // Rollo térmico de 30 mm (JAL-838L). El ancho debe coincidir con el rollo
+  // físico montado o el contenido sale recortado o con espacio en blanco.
   receipt: { widthMm: 30, heightMm: 50, orientation: 'portrait' },
-  label:   { widthMm: 60, heightMm: 40, orientation: 'landscape' },
+  label:   { widthMm: 30, heightMm: 40, orientation: 'portrait' },
 };
 
 const KEY = 'cristaliris.printSettings.v1';

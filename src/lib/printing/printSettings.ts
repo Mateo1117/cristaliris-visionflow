@@ -8,6 +8,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { buildDefaultLayout, type LabelLayout } from './labelLayout';
 
 export type Orientation = 'portrait' | 'landscape';
 
@@ -22,13 +23,14 @@ export interface PrintSize {
 export interface PrintSettings {
   receipt: PrintSize;
   label: PrintSize;
+  /** Diseño visual de la etiqueta (posición de QR y campos). */
+  labelLayout?: LabelLayout;
 }
 
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
-  // Rollo térmico de 30 mm (JAL-838L). El ancho debe coincidir con el rollo
-  // físico montado o el contenido sale recortado o con espacio en blanco.
   receipt: { widthMm: 30, heightMm: 50, orientation: 'portrait', rotateContent: false },
   label:   { widthMm: 30, heightMm: 40, orientation: 'portrait', rotateContent: false },
+  labelLayout: buildDefaultLayout(30, 40),
 };
 
 const KEY = 'cristaliris.printSettings.v1';

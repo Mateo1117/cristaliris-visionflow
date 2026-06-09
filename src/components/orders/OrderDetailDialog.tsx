@@ -215,6 +215,8 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
       descripcion: item.descripcion,
       laboratorio: item.laboratorio_nombre,
       numeroMontura: item.numero_montura || undefined,
+      fechaEntrega: (item as any).fecha_entrega_prometida || undefined,
+      sede: (item as any).sede_nombre || undefined,
     });
   };
 

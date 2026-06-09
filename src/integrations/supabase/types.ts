@@ -1247,9 +1247,11 @@ export type Database = {
           id: string
           label_height_mm: number
           label_orientation: string
+          label_rotate_content: boolean
           label_width_mm: number
           receipt_height_mm: number
           receipt_orientation: string
+          receipt_rotate_content: boolean
           receipt_width_mm: number
           singleton: boolean
           updated_at: string
@@ -1260,9 +1262,11 @@ export type Database = {
           id?: string
           label_height_mm?: number
           label_orientation?: string
+          label_rotate_content?: boolean
           label_width_mm?: number
           receipt_height_mm?: number
           receipt_orientation?: string
+          receipt_rotate_content?: boolean
           receipt_width_mm?: number
           singleton?: boolean
           updated_at?: string
@@ -1273,9 +1277,11 @@ export type Database = {
           id?: string
           label_height_mm?: number
           label_orientation?: string
+          label_rotate_content?: boolean
           label_width_mm?: number
           receipt_height_mm?: number
           receipt_orientation?: string
+          receipt_rotate_content?: boolean
           receipt_width_mm?: number
           singleton?: boolean
           updated_at?: string

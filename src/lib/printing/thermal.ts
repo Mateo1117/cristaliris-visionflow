@@ -1,22 +1,21 @@
 /**
  * Thermal printer integration — Jaltech POS JAL-838L (2-en-1)
  *
- * Estrategia: usar el driver del sistema operativo (Windows/macOS) instalado
- * para la JAL-838L. Generamos HTML con @page del ancho correcto y llamamos
- * a window.print() en una ventana auxiliar. El usuario selecciona la
- * impresora "JAL-838L" en el diálogo nativo (puede marcarse como
- * predeterminada para que se imprima sin diálogo, según el navegador).
+ * Genera PDFs con el tamaño EXACTO del medio (mm) usando jsPDF.
+ * Así el driver de la impresora recibe la página en sus dimensiones
+ * reales y no escala/recorta el contenido (problema típico con @page
+ * + window.print, donde el navegador aplica márgenes y reescalado).
  *
  * Formatos soportados:
- *  - Recibo térmico 80 mm (modo recibo)
- *  - Etiqueta 60 × 40 mm con QR (modo etiqueta)
+ *  - Ticket térmico 30 × 50 mm
+ *  - Etiqueta 60 × 40 mm con QR
  */
+
+import { jsPDF } from 'jspdf';
 
 const COMPANY = {
   nombre: 'Cristal Iris',
   nit: 'NIT 900.123.456-7',
-  direccion: 'Cra. 7 # 23-45, Bogotá',
-  telefono: 'Tel. (601) 555 55 55',
 };
 
 const fmtCOP = (n: number) =>
@@ -25,25 +24,38 @@ const fmtCOP = (n: number) =>
 const fmtFecha = (d?: string | Date) => {
   const date = d ? new Date(d) : new Date();
   return date.toLocaleString('es-CO', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
+    day: '2-digit', month: '2-digit', year: '2-digit',
     hour: '2-digit', minute: '2-digit',
   });
 };
 
-const openPrintWindow = (html: string, title: string) => {
-  const w = window.open('', '_blank', 'width=420,height=640');
+/** Abre el PDF en una ventana nueva e invoca el diálogo de impresión. */
+const openPdfPrint = (doc: jsPDF, title: string) => {
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank', 'width=420,height=640');
   if (!w) {
-    alert('Permite las ventanas emergentes para imprimir');
+    // Fallback: descarga
+    const a = document.createElement('a');
+    a.href = url; a.download = `${title}.pdf`; a.click();
     return;
   }
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${html}`);
-  w.document.write(`<script>window.addEventListener('load',()=>{setTimeout(()=>{window.focus();window.print();},150);window.addEventListener('afterprint',()=>window.close());});<\/script>`);
-  w.document.write('</body></html>');
-  w.document.close();
+  w.addEventListener('load', () => {
+    setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 250);
+  });
+};
+
+// Helpers de texto con clip horizontal a un ancho máximo (mm)
+const clipText = (doc: jsPDF, txt: string, maxW: number): string => {
+  if (!txt) return '';
+  if (doc.getTextWidth(txt) <= maxW) return txt;
+  let t = txt;
+  while (t.length > 1 && doc.getTextWidth(t + '…') > maxW) t = t.slice(0, -1);
+  return t + '…';
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// RECIBO 80 mm
+// TICKET 30 × 50 mm
 // ───────────────────────────────────────────────────────────────────────────
 
 export interface ReceiptItem {
@@ -53,7 +65,7 @@ export interface ReceiptItem {
 }
 
 export interface ReceiptData {
-  numero: string;                  // ORD-00123 o COT-00045
+  numero: string;
   fecha?: string | Date;
   paciente?: string;
   documento?: string;
@@ -68,71 +80,85 @@ export interface ReceiptData {
 }
 
 export const printThermalReceipt = (data: ReceiptData) => {
-  const sub = data.subtotal ?? data.items.reduce((s, i) => s + i.precio * (i.cantidad || 1), 0);
-  const html = `
-<style>
-  /* Ticket 3 × 5 cm (30 × 50 mm) — térmica 203 dpi ≈ 240 × 400 dots */
-  @page { size: 30mm 50mm; margin: 0; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    width: 30mm; height: 50mm;
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 6.5pt;     /* ≈ 7 dots de alto, legible en 203 dpi */
-    color: #000;
-    padding: 1mm 1.2mm;
-    line-height: 1.15;
-    overflow: hidden;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+  const W = 30, H = 50;            // mm
+  const PAD_X = 1.2, PAD_Y = 1.2;  // mm
+  const innerW = W - PAD_X * 2;
+
+  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'portrait' });
+  doc.setFont('helvetica', 'normal');
+
+  let y = PAD_Y + 1.6;
+
+  // Cabecera
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+  doc.text(COMPANY.nombre, W / 2, y, { align: 'center' }); y += 2.4;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(5);
+  doc.text(COMPANY.nit, W / 2, y, { align: 'center' }); y += 1.8;
+
+  // Línea
+  doc.setLineDashPattern([0.4, 0.4], 0);
+  doc.line(PAD_X, y, W - PAD_X, y); y += 1.8;
+
+  // Número y fecha
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+  doc.text(clipText(doc, data.numero, innerW), W / 2, y, { align: 'center' }); y += 2.2;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(5);
+  doc.text(fmtFecha(data.fecha), W / 2, y, { align: 'center' }); y += 1.8;
+
+  // Paciente
+  if (data.paciente) {
+    doc.setFontSize(5.5);
+    doc.text(clipText(doc, 'Pac: ' + data.paciente, innerW), PAD_X, y); y += 1.8;
   }
-  .center { text-align: center; }
-  .right  { text-align: right; }
-  .b      { font-weight: 700; }
-  .xs     { font-size: 5.5pt; }
-  .sm     { font-size: 6pt; }
-  .hr     { border-top: 1px dashed #000; margin: 0.6mm 0; }
-  .ellip  { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  table   { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  td      { vertical-align: top; padding: 0; font-size: 6pt; }
-  .head   { font-size: 8pt; font-weight: 800; letter-spacing: 0.3px; line-height: 1; }
-  .num    { font-size: 7.5pt; font-weight: 800; letter-spacing: 0.3px; }
-  .tot td { font-size: 8pt; font-weight: 800; padding-top: 0.3mm; }
-  .c-q { width: 10%; }
-  .c-d { width: 55%; }
-  .c-v { width: 35%; }
-</style>
-</head><body>
-  <div class="center head">${COMPANY.nombre}</div>
-  <div class="center xs ellip">${COMPANY.nit}</div>
-  <div class="hr"></div>
-  <div class="center num">${data.numero}</div>
-  <div class="center xs">${fmtFecha(data.fecha)}</div>
-  ${data.paciente ? `<div class="sm ellip"><span class="b">Pac:</span> ${data.paciente}</div>` : ''}
-  <div class="hr"></div>
-  <table>
-    <tbody>
-      ${data.items.map(i => `
-        <tr>
-          <td class="c-q">${i.cantidad || 1}</td>
-          <td class="c-d ellip">${i.descripcion}</td>
-          <td class="c-v right">${fmtCOP(i.precio * (i.cantidad || 1))}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-  <div class="hr"></div>
-  <table>
-    <tr><td class="sm">Subtotal</td><td class="sm right">${fmtCOP(sub)}</td></tr>
-    ${data.descuento ? `<tr><td class="sm">Desc</td><td class="sm right">-${fmtCOP(data.descuento)}</td></tr>` : ''}
-    <tr class="tot"><td>TOTAL</td><td class="right">${fmtCOP(data.total)}</td></tr>
-    ${data.abonado != null ? `<tr><td class="sm">Abono</td><td class="sm right">${fmtCOP(data.abonado)}</td></tr>` : ''}
-    ${data.saldo != null ? `<tr class="b sm"><td>Saldo</td><td class="right">${fmtCOP(data.saldo)}</td></tr>` : ''}
-  </table>
-  <div class="hr"></div>
-  <div class="center xs">¡Gracias!</div>
-</body></html>`;
-  openPrintWindow(html, data.numero);
+
+  doc.line(PAD_X, y, W - PAD_X, y); y += 1.6;
+
+  // Ítems
+  doc.setFontSize(5.5);
+  const colQ = PAD_X, colD = PAD_X + 3, colV = W - PAD_X;
+  const descMaxW = colV - colD - 4;
+  for (const i of data.items) {
+    if (y > H - 12) break; // protege el footer
+    const cant = String(i.cantidad || 1);
+    const desc = clipText(doc, i.descripcion, descMaxW);
+    const val = fmtCOP(i.precio * (i.cantidad || 1));
+    doc.text(cant, colQ, y);
+    doc.text(desc, colD, y);
+    doc.text(val, colV, y, { align: 'right' });
+    y += 1.8;
+  }
+
+  doc.line(PAD_X, y, W - PAD_X, y); y += 1.8;
+
+  // Totales
+  const sub = data.subtotal ?? data.items.reduce((s, i) => s + i.precio * (i.cantidad || 1), 0);
+  doc.setFontSize(5.5);
+  doc.text('Subtotal', PAD_X, y);
+  doc.text(fmtCOP(sub), W - PAD_X, y, { align: 'right' }); y += 1.8;
+  if (data.descuento) {
+    doc.text('Desc', PAD_X, y);
+    doc.text('-' + fmtCOP(data.descuento), W - PAD_X, y, { align: 'right' }); y += 1.8;
+  }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+  doc.text('TOTAL', PAD_X, y);
+  doc.text(fmtCOP(data.total), W - PAD_X, y, { align: 'right' }); y += 2.2;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(5.5);
+  if (data.abonado != null) {
+    doc.text('Abono', PAD_X, y);
+    doc.text(fmtCOP(data.abonado), W - PAD_X, y, { align: 'right' }); y += 1.8;
+  }
+  if (data.saldo != null) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Saldo', PAD_X, y);
+    doc.text(fmtCOP(data.saldo), W - PAD_X, y, { align: 'right' }); y += 1.8;
+    doc.setFont('helvetica', 'normal');
+  }
+
+  // Footer
+  doc.setFontSize(5);
+  doc.text('¡Gracias!', W / 2, H - PAD_Y, { align: 'center' });
+
+  openPdfPrint(doc, data.numero);
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -140,51 +166,73 @@ export const printThermalReceipt = (data: ReceiptData) => {
 // ───────────────────────────────────────────────────────────────────────────
 
 export interface LabelData {
-  numero: string;          // ORD-00123
-  qrSvg: string;           // outerHTML de un <svg> qrcode.react
+  numero: string;
+  qrSvg: string;          // outerHTML <svg> de qrcode.react
   paciente?: string;
   descripcion?: string;
   laboratorio?: string;
   numeroMontura?: string;
 }
 
-export const printThermalLabel = (data: LabelData) => {
-  const html = `
-<style>
-  @page { size: 60mm 40mm; margin: 0; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    width: 60mm; height: 40mm;
-    font-family: Arial, sans-serif; color: #000;
-    padding: 1.5mm 2mm;
-    overflow: hidden;
+/** Convierte SVG string a PNG dataURL del tamaño en px solicitado. */
+const svgToPngDataUrl = (svg: string, sizePx: number): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = sizePx; c.height = sizePx;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, sizePx, sizePx);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 0, 0, sizePx, sizePx);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+
+export const printThermalLabel = async (data: LabelData) => {
+  const W = 60, H = 40;
+  const PAD = 1.5;
+  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation: 'landscape' });
+  doc.setFont('helvetica', 'normal');
+
+  // QR a la izquierda (cuadrado, 32 mm)
+  const qrSize = 32;
+  // 203 dpi → 8 px/mm → 256 px para 32 mm. Generamos 384 (~12 px/mm) para nitidez.
+  try {
+    const pngUrl = await svgToPngDataUrl(data.qrSvg, 384);
+    doc.addImage(pngUrl, 'PNG', PAD, (H - qrSize) / 2, qrSize, qrSize, undefined, 'FAST');
+  } catch {/* ignora QR si falla */}
+
+  // Texto a la derecha
+  const xT = PAD + qrSize + 2;
+  const innerW = W - xT - PAD;
+  let y = PAD + 3;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+  doc.text(clipText(doc, data.numero, innerW), xT, y); y += 4;
+
+  if (data.paciente) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+    doc.text(clipText(doc, data.paciente, innerW), xT, y); y += 3;
   }
-  .row { display: flex; gap: 2mm; align-items: stretch; height: 100%; }
-  .qr { width: 32mm; height: 32mm; flex: none; }
-  .qr svg {
-    width: 100%; height: 100%; display: block;
-    shape-rendering: crispEdges;
-    image-rendering: pixelated;
+  if (data.descripcion) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
+    doc.text(clipText(doc, data.descripcion, innerW), xT, y); y += 2.8;
   }
-  .qr svg * { shape-rendering: crispEdges; }
-  .info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .num { font-size: 12px; font-weight: 800; letter-spacing: 0.5px; line-height: 1.1; }
-  .name { font-size: 9px; font-weight: 700; margin-top: 1mm; line-height: 1.1; overflow: hidden; }
-  .desc { font-size: 7.5px; margin-top: 0.5mm; line-height: 1.1; overflow: hidden; }
-  .lab { font-size: 7px; margin-top: auto; opacity: 0.85; }
-</style>
-</head><body>
-  <div class="row">
-    <div class="qr">${data.qrSvg}</div>
-    <div class="info">
-      <div class="num">${data.numero}</div>
-      ${data.paciente ? `<div class="name">${data.paciente}</div>` : ''}
-      ${data.descripcion ? `<div class="desc">${data.descripcion}</div>` : ''}
-      ${data.numeroMontura ? `<div class="desc">M:${data.numeroMontura}</div>` : ''}
-      ${data.laboratorio ? `<div class="lab">${data.laboratorio}</div>` : ''}
-    </div>
-  </div>
-</body></html>`;
-  openPrintWindow(html, `Etiqueta ${data.numero}`);
+  if (data.numeroMontura) {
+    doc.setFontSize(6.5);
+    doc.text(clipText(doc, 'M: ' + data.numeroMontura, innerW), xT, y); y += 2.8;
+  }
+  if (data.laboratorio) {
+    doc.setFontSize(6);
+    doc.text(clipText(doc, data.laboratorio, innerW), xT, H - PAD);
+  }
+
+  openPdfPrint(doc, `Etiqueta ${data.numero}`);
 };

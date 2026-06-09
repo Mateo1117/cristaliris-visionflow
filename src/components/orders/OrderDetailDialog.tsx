@@ -29,6 +29,71 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
 
+  // Editable order data
+  const [editingOrder, setEditingOrder] = useState(false);
+  const [orderEdit, setOrderEdit] = useState({
+    tipo_producto: 'lente' as 'lente' | 'montura' | 'insumo',
+    descripcion: '',
+    laboratorio_id: null as string | null,
+    numero_montura: '',
+    tipo_lente_tiempo: '',
+    es_garantia: false,
+    es_reproceso: false,
+    observaciones: '',
+  });
+
+  const { data: laboratorios = [] } = useQuery({
+    queryKey: ['laboratorios-edit'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('laboratorios').select('id, nombre').eq('estado_activo', true).order('nombre');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const startEditOrder = async () => {
+    if (!item) return;
+    const { data } = await supabase.from('orden_productos')
+      .select('tipo_producto, descripcion, laboratorio_id, numero_montura, tipo_lente_tiempo, es_garantia, es_reproceso, observaciones')
+      .eq('id', item.id).single();
+    if (data) {
+      setOrderEdit({
+        tipo_producto: (data.tipo_producto as any) || 'lente',
+        descripcion: data.descripcion || '',
+        laboratorio_id: data.laboratorio_id,
+        numero_montura: data.numero_montura || '',
+        tipo_lente_tiempo: data.tipo_lente_tiempo || '',
+        es_garantia: !!data.es_garantia,
+        es_reproceso: !!data.es_reproceso,
+        observaciones: data.observaciones || '',
+      });
+      setEditingOrder(true);
+    }
+  };
+
+  const saveOrder = useMutation({
+    mutationFn: async () => {
+      if (!item) return;
+      const { error } = await supabase.from('orden_productos').update({
+        tipo_producto: orderEdit.tipo_producto,
+        descripcion: orderEdit.descripcion,
+        laboratorio_id: orderEdit.laboratorio_id,
+        numero_montura: orderEdit.numero_montura || null,
+        tipo_lente_tiempo: orderEdit.tipo_lente_tiempo || null,
+        es_garantia: orderEdit.es_garantia,
+        es_reproceso: orderEdit.es_reproceso,
+        observaciones: orderEdit.observaciones || null,
+      }).eq('id', item.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      setEditingOrder(false);
+      toast.success('Orden actualizada');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   // Editable costs
   const [editingCosts, setEditingCosts] = useState(false);
   const [costs, setCosts] = useState({

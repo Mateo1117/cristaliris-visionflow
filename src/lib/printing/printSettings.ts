@@ -8,6 +8,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { buildDefaultLayout, type LabelLayout } from './labelLayout';
 
 export type Orientation = 'portrait' | 'landscape';
 
@@ -22,13 +23,14 @@ export interface PrintSize {
 export interface PrintSettings {
   receipt: PrintSize;
   label: PrintSize;
+  /** Diseño visual de la etiqueta (posición de QR y campos). */
+  labelLayout?: LabelLayout;
 }
 
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
-  // Rollo térmico de 30 mm (JAL-838L). El ancho debe coincidir con el rollo
-  // físico montado o el contenido sale recortado o con espacio en blanco.
   receipt: { widthMm: 30, heightMm: 50, orientation: 'portrait', rotateContent: false },
   label:   { widthMm: 30, heightMm: 40, orientation: 'portrait', rotateContent: false },
+  labelLayout: buildDefaultLayout(30, 40),
 };
 
 const KEY = 'cristaliris.printSettings.v1';
@@ -42,6 +44,7 @@ export const loadPrintSettings = (): PrintSettings => {
     return {
       receipt: { ...DEFAULT_PRINT_SETTINGS.receipt, ...(parsed.receipt || {}) },
       label:   { ...DEFAULT_PRINT_SETTINGS.label,   ...(parsed.label   || {}) },
+      labelLayout: parsed.labelLayout || DEFAULT_PRINT_SETTINGS.labelLayout,
     };
   } catch {
     return DEFAULT_PRINT_SETTINGS;
@@ -71,6 +74,9 @@ const rowToSettings = (row: any): PrintSettings => ({
     orientation: (row.label_orientation === 'landscape' ? 'landscape' : 'portrait'),
     rotateContent: Boolean(row.label_rotate_content),
   },
+  labelLayout: row.label_layout && typeof row.label_layout === 'object'
+    ? (row.label_layout as LabelLayout)
+    : buildDefaultLayout(Number(row.label_width_mm) || 30, Number(row.label_height_mm) || 40),
 });
 
 /** Lee los parámetros desde la BD y refresca la caché. */
@@ -104,6 +110,7 @@ export const savePrintSettings = async (s: PrintSettings): Promise<void> => {
     label_height_mm: s.label.heightMm,
     label_orientation: s.label.orientation,
     label_rotate_content: !!s.label.rotateContent,
+    label_layout: s.labelLayout ?? null,
   };
 
   if (existing?.id) {

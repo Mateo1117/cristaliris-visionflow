@@ -23,6 +23,8 @@ import {
   type Orientation,
 } from '@/lib/printing/printSettings';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
+import { LabelDesigner } from '@/components/settings/LabelDesigner';
+import { buildDefaultLayout, type LabelLayout } from '@/lib/printing/labelLayout';
 
 export default function SettingsPage() {
   const [showSedeForm, setShowSedeForm] = useState(false);
@@ -404,6 +406,25 @@ function PrintSettingsTab() {
         sizeKey="label"
         onTest={testLabel}
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Diseño visual de la etiqueta</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Arrastra el QR y los campos a la posición exacta que quieres que salgan impresos.
+            Selecciona un elemento para ajustar tamaño, fuente y alineación.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <LabelDesigner
+            widthMm={settings.label.widthMm}
+            heightMm={settings.label.heightMm}
+            layout={settings.labelLayout || buildDefaultLayout(settings.label.widthMm, settings.label.heightMm)}
+            onChange={(l: LabelLayout) => setSettings(prev => ({ ...prev, labelLayout: l }))}
+          />
+        </CardContent>
+      </Card>
+
 
       <div className="flex justify-end items-center gap-2">
         {loading && <span className="text-xs text-muted-foreground mr-auto">Cargando desde la base de datos…</span>}

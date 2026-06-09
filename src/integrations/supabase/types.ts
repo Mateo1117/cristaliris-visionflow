@@ -1246,6 +1246,7 @@ export type Database = {
           created_at: string
           id: string
           label_height_mm: number
+          label_layout: Json | null
           label_orientation: string
           label_rotate_content: boolean
           label_width_mm: number
@@ -1261,6 +1262,7 @@ export type Database = {
           created_at?: string
           id?: string
           label_height_mm?: number
+          label_layout?: Json | null
           label_orientation?: string
           label_rotate_content?: boolean
           label_width_mm?: number
@@ -1276,6 +1278,7 @@ export type Database = {
           created_at?: string
           id?: string
           label_height_mm?: number
+          label_layout?: Json | null
           label_orientation?: string
           label_rotate_content?: boolean
           label_width_mm?: number

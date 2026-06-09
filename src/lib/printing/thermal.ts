@@ -12,6 +12,7 @@ import {
   type PrintSize,
   type Orientation,
 } from './printSettings';
+import { buildDefaultLayout, type LabelElement, type LabelField, type LabelLayout } from './labelLayout';
 
 const COMPANY = {
   nombre: 'Cristal Iris',
@@ -189,6 +190,8 @@ export interface LabelData {
   descripcion?: string;
   laboratorio?: string;
   numeroMontura?: string;
+  fechaEntrega?: string | Date;
+  sede?: string;
 }
 
 const svgToPngDataUrl = (svg: string, sizePx: number): Promise<string> =>
@@ -211,89 +214,68 @@ const svgToPngDataUrl = (svg: string, sizePx: number): Promise<string> =>
     img.src = url;
   });
 
+/** Resuelve el texto a imprimir para un campo del layout. */
+const fieldValue = (field: LabelField, data: LabelData, customText?: string): string => {
+  switch (field) {
+    case 'numero':        return data.numero || '';
+    case 'paciente':      return data.paciente || '';
+    case 'descripcion':   return data.descripcion || '';
+    case 'laboratorio':   return data.laboratorio || '';
+    case 'numeroMontura': return data.numeroMontura || '';
+    case 'fechaEntrega':
+      if (!data.fechaEntrega) return '';
+      try {
+        const d = data.fechaEntrega instanceof Date ? data.fechaEntrega : new Date(data.fechaEntrega);
+        return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      } catch { return ''; }
+    case 'sede':          return data.sede || '';
+    case 'custom':        return customText || '';
+    default:              return '';
+  }
+};
+
 export const printThermalLabel = async (data: LabelData) => {
-  const cfg = loadPrintSettings().label;
+  const settings = loadPrintSettings();
+  const cfg = settings.label;
   const { W, H, orientation } = resolveFormat(cfg);
 
-  // En jsPDF con orientation 'landscape', el page width efectivo es H y el height es W.
-  // Para simplificar, reasignamos a variables "página":
   const pageW = orientation === 'landscape' ? Math.max(W, H) : Math.min(W, H);
   const pageH = orientation === 'landscape' ? Math.min(W, H) : Math.max(W, H);
 
-  const PAD = Math.max(1, Math.min(pageW, pageH) * 0.04);
-
-  // QR ocupa hasta el alto disponible (cuadrado), con tope en 60% del ancho
-  const qrSize = Math.min(pageH - PAD * 2, pageW * 0.55);
+  const layout: LabelLayout = settings.labelLayout && settings.labelLayout.elements?.length
+    ? settings.labelLayout
+    : buildDefaultLayout(pageW, pageH);
 
   const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation });
   doc.setFont('helvetica', 'normal');
 
-  // Decide layout: si pageW >= pageH * 1.3 → QR a la izquierda y texto a la derecha.
-  // En caso contrario (cuadrado / vertical) → QR arriba y texto debajo.
-  const horizontal = pageW >= pageH * 1.2;
+  // Renderiza cada elemento del layout
+  for (const el of layout.elements) {
+    if (el.field === 'qr') {
+      try {
+        const px = Math.max(64, Math.round(el.wMm * 12));
+        const pngUrl = await svgToPngDataUrl(data.qrSvg, px);
+        doc.addImage(pngUrl, 'PNG', el.xMm, el.yMm, el.wMm, el.wMm, undefined, 'FAST');
+      } catch { /* ignora QR si falla */ }
+      continue;
+    }
 
-  if (horizontal) {
-    try {
-      const pngUrl = await svgToPngDataUrl(data.qrSvg, Math.round(qrSize * 12));
-      doc.addImage(pngUrl, 'PNG', PAD, (pageH - qrSize) / 2, qrSize, qrSize, undefined, 'FAST');
-    } catch {/* ignora QR si falla */}
+    const raw = fieldValue(el.field, data, el.text);
+    if (!raw) continue;
+    const txt = (el.prefix || '') + raw;
 
-    const xT = PAD + qrSize + PAD;
-    const innerW = pageW - xT - PAD;
-    const fScale = Math.max(0.6, Math.min(1.8, innerW / 22));
-    let y = PAD + 2.4 * fScale;
+    doc.setFont('helvetica', el.bold ? 'bold' : 'normal');
+    doc.setFontSize(Math.max(4, el.fontSize));
 
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10 * fScale);
-    doc.text(clipText(doc, data.numero, innerW), xT, y); y += 4 * fScale;
-
-    if (data.paciente) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7 * fScale);
-      doc.text(clipText(doc, data.paciente, innerW), xT, y); y += 3 * fScale;
-    }
-    if (data.descripcion) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5 * fScale);
-      doc.text(clipText(doc, data.descripcion, innerW), xT, y); y += 2.8 * fScale;
-    }
-    if (data.numeroMontura) {
-      doc.setFontSize(6.5 * fScale);
-      doc.text(clipText(doc, 'M: ' + data.numeroMontura, innerW), xT, y); y += 2.8 * fScale;
-    }
-    if (data.laboratorio) {
-      doc.setFontSize(6 * fScale);
-      doc.text(clipText(doc, data.laboratorio, innerW), xT, pageH - PAD);
-    }
-  } else {
-    // Layout vertical: QR arriba, texto debajo
-    const qr = Math.min(pageW - PAD * 2, pageH * 0.55);
-    try {
-      const pngUrl = await svgToPngDataUrl(data.qrSvg, Math.round(qr * 12));
-      doc.addImage(pngUrl, 'PNG', (pageW - qr) / 2, PAD, qr, qr, undefined, 'FAST');
-    } catch {/* ignora QR si falla */}
-
-    const fScale = Math.max(0.6, Math.min(1.8, pageW / 30));
-    let y = PAD + qr + 3 * fScale;
-    const innerW = pageW - PAD * 2;
-
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9 * fScale);
-    doc.text(clipText(doc, data.numero, innerW), pageW / 2, y, { align: 'center' }); y += 3.4 * fScale;
-
-    if (data.paciente) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5 * fScale);
-      doc.text(clipText(doc, data.paciente, innerW), pageW / 2, y, { align: 'center' }); y += 2.8 * fScale;
-    }
-    if (data.descripcion) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(6 * fScale);
-      doc.text(clipText(doc, data.descripcion, innerW), pageW / 2, y, { align: 'center' }); y += 2.6 * fScale;
-    }
-    if (data.numeroMontura) {
-      doc.setFontSize(6 * fScale);
-      doc.text(clipText(doc, 'M: ' + data.numeroMontura, innerW), pageW / 2, y, { align: 'center' }); y += 2.6 * fScale;
-    }
-    if (data.laboratorio) {
-      doc.setFontSize(5.5 * fScale);
-      doc.text(clipText(doc, data.laboratorio, innerW), pageW / 2, pageH - PAD, { align: 'center' });
-    }
+    const clipped = clipText(doc, txt, Math.max(2, el.wMm));
+    const align = el.align || 'left';
+    const baselineY = el.yMm + el.fontSize * 0.35; // baseline aproximada
+    let x = el.xMm;
+    if (align === 'center') x = el.xMm + el.wMm / 2;
+    else if (align === 'right') x = el.xMm + el.wMm;
+    doc.text(clipped, x, baselineY, { align });
   }
 
   openPdfPrint(doc, `Etiqueta ${data.numero}`);
 };
+

@@ -229,8 +229,14 @@ function PrintSettingsTab() {
     return () => { mounted = false; };
   }, []);
 
-  const update = (key: 'receipt' | 'label', field: 'widthMm' | 'heightMm' | 'orientation', value: any) => {
-    setSettings(prev => ({ ...prev, [key]: { ...prev[key], [field]: field === 'orientation' ? value : Number(value) || 0 } }));
+  const update = (key: 'receipt' | 'label', field: 'widthMm' | 'heightMm' | 'orientation' | 'rotateContent', value: any) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: field === 'orientation' ? value : field === 'rotateContent' ? Boolean(value) : (Number(value) || 0),
+      },
+    }));
   };
 
   const handleSave = async () => {

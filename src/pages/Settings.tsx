@@ -23,6 +23,8 @@ import {
   type Orientation,
 } from '@/lib/printing/printSettings';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
+import { LabelDesigner } from '@/components/settings/LabelDesigner';
+import { buildDefaultLayout, type LabelLayout } from '@/lib/printing/labelLayout';
 
 export default function SettingsPage() {
   const [showSedeForm, setShowSedeForm] = useState(false);

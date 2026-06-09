@@ -1241,6 +1241,48 @@ export type Database = {
           },
         ]
       }
+      print_settings: {
+        Row: {
+          created_at: string
+          id: string
+          label_height_mm: number
+          label_orientation: string
+          label_width_mm: number
+          receipt_height_mm: number
+          receipt_orientation: string
+          receipt_width_mm: number
+          singleton: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label_height_mm?: number
+          label_orientation?: string
+          label_width_mm?: number
+          receipt_height_mm?: number
+          receipt_orientation?: string
+          receipt_width_mm?: number
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label_height_mm?: number
+          label_orientation?: string
+          label_width_mm?: number
+          receipt_height_mm?: number
+          receipt_orientation?: string
+          receipt_width_mm?: number
+          singleton?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       productos_catalogo: {
         Row: {
           activo: boolean

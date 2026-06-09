@@ -110,6 +110,7 @@ export const savePrintSettings = async (s: PrintSettings): Promise<void> => {
     label_height_mm: s.label.heightMm,
     label_orientation: s.label.orientation,
     label_rotate_content: !!s.label.rotateContent,
+    label_layout: s.labelLayout ?? null,
   };
 
   if (existing?.id) {

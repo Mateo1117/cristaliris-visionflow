@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf';
 import {
   loadPrintSettings,
   type PrintSize,
+  type Orientation,
 } from './printSettings';
 
 const COMPANY = {

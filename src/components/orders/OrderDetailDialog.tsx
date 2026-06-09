@@ -241,7 +241,10 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         numeroMontura: item.numero_montura || undefined,
       });
       toast.success('Etiqueta enviada por USB');
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: any) {
+      toast.error(e.message || 'Error USB. Usando PDF como respaldo.');
+      printLabel();
+    }
   };
 
   const printReceiptUsb = async () => {
@@ -255,7 +258,10 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         notas: `Lab: ${item.laboratorio_nombre}${item.numero_montura ? ' M:' + item.numero_montura : ''}`,
       });
       toast.success('Recibo enviado por USB');
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: any) {
+      toast.error(e.message || 'Error USB. Usando PDF como respaldo.');
+      printReceipt();
+    }
   };
 
   const pairUsb = async () => {

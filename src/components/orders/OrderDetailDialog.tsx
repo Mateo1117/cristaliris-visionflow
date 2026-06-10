@@ -211,6 +211,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     printThermalLabel({
       numero: numeroOrdenLabel || '',
       qrSvg: svg.outerHTML,
+      qrPayload: qrUrl,
       paciente: item.paciente_nombre,
       descripcion: item.descripcion,
       laboratorio: item.laboratorio_nombre,

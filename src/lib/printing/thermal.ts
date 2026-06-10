@@ -186,7 +186,9 @@ export const printThermalReceipt = (data: ReceiptData) => {
 
 export interface LabelData {
   numero: string;
-  qrSvg: string;
+  qrSvg?: string;
+  /** Contenido a codificar en el QR. Si no se envía, se usa `numero`. */
+  qrPayload?: string;
   paciente?: string;
   descripcion?: string;
   laboratorio?: string;
@@ -256,7 +258,7 @@ export const printThermalLabel = async (data: LabelData) => {
       try {
         const px = Math.max(128, Math.round(el.wMm * 16));
         // Genera PNG directamente con qrcode (independiente del DOM).
-        const pngUrl = await QRCode.toDataURL(data.numero || ' ', {
+        const pngUrl = await QRCode.toDataURL(data.qrPayload || data.numero || ' ', {
           errorCorrectionLevel: 'M',
           margin: 0,
           width: px,

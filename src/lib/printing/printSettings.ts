@@ -29,8 +29,8 @@ export interface PrintSettings {
 
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   receipt: { widthMm: 30, heightMm: 50, orientation: 'portrait', rotateContent: false },
-  label:   { widthMm: 30, heightMm: 40, orientation: 'portrait', rotateContent: false },
-  labelLayout: buildDefaultLayout(30, 40),
+  label:   { widthMm: 30, heightMm: 50, orientation: 'portrait', rotateContent: false },
+  labelLayout: buildDefaultLayout(30, 50),
 };
 
 const KEY = 'cristaliris.printSettings.v1';

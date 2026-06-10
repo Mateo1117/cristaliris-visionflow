@@ -29,8 +29,8 @@ export interface PrintSettings {
 
 export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
   receipt: { widthMm: 30, heightMm: 50, orientation: 'portrait', rotateContent: false },
-  label:   { widthMm: 30, heightMm: 40, orientation: 'portrait', rotateContent: false },
-  labelLayout: buildDefaultLayout(30, 40),
+  label:   { widthMm: 30, heightMm: 50, orientation: 'portrait', rotateContent: false },
+  labelLayout: buildDefaultLayout(30, 50),
 };
 
 const KEY = 'cristaliris.printSettings.v1';
@@ -76,7 +76,7 @@ const rowToSettings = (row: any): PrintSettings => ({
   },
   labelLayout: row.label_layout && typeof row.label_layout === 'object'
     ? (row.label_layout as LabelLayout)
-    : buildDefaultLayout(Number(row.label_width_mm) || 30, Number(row.label_height_mm) || 40),
+    : buildDefaultLayout(Number(row.label_width_mm) || 30, Number(row.label_height_mm) || 50),
 });
 
 /** Lee los parámetros desde la BD y refresca la caché. */

@@ -104,9 +104,19 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
         ))}
         <Button
           size="sm"
+          variant="outline"
+          type="button"
+          className="ml-auto"
+          onClick={() => setPreviewRot(r => ((r + 90) % 360) as 0 | 90 | 180 | 270)}
+          title="Girar vista previa"
+        >
+          <RotateCw className="h-3.5 w-3.5 mr-1" /> Girar ({previewRot}°)
+        </Button>
+        <Button
+          size="sm"
           variant="ghost"
           type="button"
-          className="ml-auto text-xs"
+          className="text-xs"
           onClick={() => onChange(buildDefaultLayout(widthMm, heightMm))}
         >
           Restaurar diseño por defecto

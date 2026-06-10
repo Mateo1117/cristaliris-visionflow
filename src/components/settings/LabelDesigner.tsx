@@ -197,6 +197,7 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
 

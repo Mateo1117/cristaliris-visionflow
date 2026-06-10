@@ -35,6 +35,7 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
   const px = Math.max(LABEL_PX_PER_MM, Math.min(20, 320 / widthMm));
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(layout.elements[0]?.id ?? null);
+  const [previewRot, setPreviewRot] = useState<0 | 90 | 180 | 270>(0);
   const dragRef = useRef<{ id: string; offX: number; offY: number } | null>(null);
 
   const selected = layout.elements.find(e => e.id === selectedId) || null;

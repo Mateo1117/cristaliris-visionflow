@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { Plus, Trash2, Bold, AlignLeft, AlignCenter, AlignRight, QrCode } from 'lucide-react';
+import { Plus, Trash2, Bold, AlignLeft, AlignCenter, AlignRight, QrCode, RotateCw } from 'lucide-react';
 import {
   type LabelElement,
   type LabelField,
@@ -35,6 +35,7 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
   const px = Math.max(LABEL_PX_PER_MM, Math.min(20, 320 / widthMm));
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(layout.elements[0]?.id ?? null);
+  const [previewRot, setPreviewRot] = useState<0 | 90 | 180 | 270>(0);
   const dragRef = useRef<{ id: string; offX: number; offY: number } | null>(null);
 
   const selected = layout.elements.find(e => e.id === selectedId) || null;
@@ -58,13 +59,26 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
   };
 
   // ─── Drag ────────────────────────────────────────────────────────────────
+  // Convierte un punto de pantalla (clientX/Y) a coords px del canvas SIN rotar.
+  const screenToCanvas = (cx: number, cy: number) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = cx - centerX;
+    const dy = cy - centerY;
+    const rad = (-previewRot * Math.PI) / 180;
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+    return { x: lx + (widthMm * px) / 2, y: ly + (heightMm * px) / 2 };
+  };
+
   const onPointerDown = (e: React.PointerEvent, el: LabelElement) => {
     if (!canvasRef.current) return;
     e.stopPropagation();
     setSelectedId(el.id);
-    const rect = canvasRef.current.getBoundingClientRect();
-    const offX = e.clientX - rect.left - el.xMm * px;
-    const offY = e.clientY - rect.top - el.yMm * px;
+    const p = screenToCanvas(e.clientX, e.clientY);
+    const offX = p.x - el.xMm * px;
+    const offY = p.y - el.yMm * px;
     dragRef.current = { id: el.id, offX, offY };
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
@@ -73,9 +87,9 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
     const { id, offX, offY } = dragRef.current;
     const el = layout.elements.find(x => x.id === id);
     if (!el) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const xMm = Math.round(((e.clientX - rect.left - offX) / px) * 10) / 10;
-    const yMm = Math.round(((e.clientY - rect.top - offY) / px) * 10) / 10;
+    const p = screenToCanvas(e.clientX, e.clientY);
+    const xMm = Math.round(((p.x - offX) / px) * 10) / 10;
+    const yMm = Math.round(((p.y - offY) / px) * 10) / 10;
     const maxW = el.field === 'qr' ? el.wMm : el.wMm;
     const elH = el.field === 'qr' ? el.wMm : Math.max(2, el.fontSize * 0.45);
     update(id, {
@@ -88,6 +102,11 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
   // ─── Render ──────────────────────────────────────────────────────────────
   const previewW = widthMm * px;
   const previewH = heightMm * px;
+  const rotated = previewRot === 90 || previewRot === 270;
+  const outerW = rotated ? previewH : previewW;
+  const outerH = rotated ? previewW : previewH;
+
+
 
   return (
     <div className="space-y-3">
@@ -103,9 +122,19 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
         ))}
         <Button
           size="sm"
+          variant="outline"
+          type="button"
+          className="ml-auto"
+          onClick={() => setPreviewRot(r => ((r + 90) % 360) as 0 | 90 | 180 | 270)}
+          title="Girar vista previa"
+        >
+          <RotateCw className="h-3.5 w-3.5 mr-1" /> Girar ({previewRot}°)
+        </Button>
+        <Button
+          size="sm"
           variant="ghost"
           type="button"
-          className="ml-auto text-xs"
+          className="text-xs"
           onClick={() => onChange(buildDefaultLayout(widthMm, heightMm))}
         >
           Restaurar diseño por defecto
@@ -116,16 +145,24 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
         {/* Canvas */}
         <div className="space-y-1">
           <div className="text-[10px] text-muted-foreground">
-            {widthMm} × {heightMm} mm · arrastra los elementos
+            {widthMm} × {heightMm} mm · arrastra los elementos {previewRot ? `· vista girada ${previewRot}°` : ''}
           </div>
-          <div
-            ref={canvasRef}
-            className="relative bg-white border-2 border-dashed border-border rounded shadow-inner select-none"
-            style={{ width: previewW, height: previewH }}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onClick={() => setSelectedId(null)}
-          >
+          <div style={{ width: outerW, height: outerH }} className="relative">
+            <div
+              ref={canvasRef}
+              className="absolute bg-white border-2 border-dashed border-border rounded shadow-inner select-none"
+              style={{
+                width: previewW,
+                height: previewH,
+                left: (outerW - previewW) / 2,
+                top: (outerH - previewH) / 2,
+                transform: `rotate(${previewRot}deg)`,
+                transformOrigin: 'center center',
+              }}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onClick={() => setSelectedId(null)}
+            >
             {layout.elements.map(el => {
               const isSel = el.id === selectedId;
               const isQr = el.field === 'qr';
@@ -160,6 +197,7 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
 

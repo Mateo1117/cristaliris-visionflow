@@ -7,6 +7,7 @@
  */
 
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 import {
   loadPrintSettings,
   type PrintSize,

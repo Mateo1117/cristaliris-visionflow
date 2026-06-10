@@ -272,7 +272,11 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     catch (e: any) { if (e.name !== 'NotFoundError') toast.error(e.message); }
   };
 
-  const qrUrl = item ? `${window.location.origin}/scan?id=${item.id}` : '';
+  const qrUrl = item
+    ? `${window.location.origin}/scan?tipo=orden&id=${item.id}` +
+      `&oid=${encodeURIComponent(item.orden_id || '')}` +
+      `&n=${encodeURIComponent(numeroOrdenLabel || '')}`
+    : '';
 
   if (!item) return null;
 

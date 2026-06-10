@@ -145,16 +145,24 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
         {/* Canvas */}
         <div className="space-y-1">
           <div className="text-[10px] text-muted-foreground">
-            {widthMm} × {heightMm} mm · arrastra los elementos
+            {widthMm} × {heightMm} mm · arrastra los elementos {previewRot ? `· vista girada ${previewRot}°` : ''}
           </div>
-          <div
-            ref={canvasRef}
-            className="relative bg-white border-2 border-dashed border-border rounded shadow-inner select-none"
-            style={{ width: previewW, height: previewH }}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onClick={() => setSelectedId(null)}
-          >
+          <div style={{ width: outerW, height: outerH }} className="relative">
+            <div
+              ref={canvasRef}
+              className="absolute bg-white border-2 border-dashed border-border rounded shadow-inner select-none"
+              style={{
+                width: previewW,
+                height: previewH,
+                left: (outerW - previewW) / 2,
+                top: (outerH - previewH) / 2,
+                transform: `rotate(${previewRot}deg)`,
+                transformOrigin: 'center center',
+              }}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onClick={() => setSelectedId(null)}
+            >
             {layout.elements.map(el => {
               const isSel = el.id === selectedId;
               const isQr = el.field === 'qr';

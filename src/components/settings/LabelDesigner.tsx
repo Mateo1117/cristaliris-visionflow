@@ -59,13 +59,26 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
   };
 
   // ─── Drag ────────────────────────────────────────────────────────────────
+  // Convierte un punto de pantalla (clientX/Y) a coords px del canvas SIN rotar.
+  const screenToCanvas = (cx: number, cy: number) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = cx - centerX;
+    const dy = cy - centerY;
+    const rad = (-previewRot * Math.PI) / 180;
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+    return { x: lx + (widthMm * px) / 2, y: ly + (heightMm * px) / 2 };
+  };
+
   const onPointerDown = (e: React.PointerEvent, el: LabelElement) => {
     if (!canvasRef.current) return;
     e.stopPropagation();
     setSelectedId(el.id);
-    const rect = canvasRef.current.getBoundingClientRect();
-    const offX = e.clientX - rect.left - el.xMm * px;
-    const offY = e.clientY - rect.top - el.yMm * px;
+    const p = screenToCanvas(e.clientX, e.clientY);
+    const offX = p.x - el.xMm * px;
+    const offY = p.y - el.yMm * px;
     dragRef.current = { id: el.id, offX, offY };
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
@@ -74,9 +87,9 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
     const { id, offX, offY } = dragRef.current;
     const el = layout.elements.find(x => x.id === id);
     if (!el) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const xMm = Math.round(((e.clientX - rect.left - offX) / px) * 10) / 10;
-    const yMm = Math.round(((e.clientY - rect.top - offY) / px) * 10) / 10;
+    const p = screenToCanvas(e.clientX, e.clientY);
+    const xMm = Math.round(((p.x - offX) / px) * 10) / 10;
+    const yMm = Math.round(((p.y - offY) / px) * 10) / 10;
     const maxW = el.field === 'qr' ? el.wMm : el.wMm;
     const elH = el.field === 'qr' ? el.wMm : Math.max(2, el.fontSize * 0.45);
     update(id, {
@@ -89,6 +102,11 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
   // ─── Render ──────────────────────────────────────────────────────────────
   const previewW = widthMm * px;
   const previewH = heightMm * px;
+  const rotated = previewRot === 90 || previewRot === 270;
+  const outerW = rotated ? previewH : previewW;
+  const outerH = rotated ? previewW : previewH;
+
+
 
   return (
     <div className="space-y-3">

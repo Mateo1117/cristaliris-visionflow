@@ -7,6 +7,7 @@
  */
 
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 import {
   loadPrintSettings,
   type PrintSize,
@@ -253,10 +254,18 @@ export const printThermalLabel = async (data: LabelData) => {
   for (const el of layout.elements) {
     if (el.field === 'qr') {
       try {
-        const px = Math.max(64, Math.round(el.wMm * 12));
-        const pngUrl = await svgToPngDataUrl(data.qrSvg, px);
+        const px = Math.max(128, Math.round(el.wMm * 16));
+        // Genera PNG directamente con qrcode (independiente del DOM).
+        const pngUrl = await QRCode.toDataURL(data.numero || ' ', {
+          errorCorrectionLevel: 'M',
+          margin: 0,
+          width: px,
+          color: { dark: '#000000', light: '#FFFFFF' },
+        });
         doc.addImage(pngUrl, 'PNG', el.xMm, el.yMm, el.wMm, el.wMm, undefined, 'FAST');
-      } catch { /* ignora QR si falla */ }
+      } catch (e) {
+        console.error('QR render failed', e);
+      }
       continue;
     }
 

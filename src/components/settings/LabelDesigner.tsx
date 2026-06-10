@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { Plus, Trash2, Bold, AlignLeft, AlignCenter, AlignRight, QrCode } from 'lucide-react';
+import { Plus, Trash2, Bold, AlignLeft, AlignCenter, AlignRight, QrCode, RotateCw } from 'lucide-react';
 import {
   type LabelElement,
   type LabelField,

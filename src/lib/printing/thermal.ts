@@ -186,7 +186,9 @@ export const printThermalReceipt = (data: ReceiptData) => {
 
 export interface LabelData {
   numero: string;
-  qrSvg: string;
+  qrSvg?: string;
+  /** Contenido a codificar en el QR. Si no se envía, se usa `numero`. */
+  qrPayload?: string;
   paciente?: string;
   descripcion?: string;
   laboratorio?: string;

@@ -11,6 +11,7 @@ import {
   type LabelLayout,
   FIELD_LABELS,
   SAMPLE_VALUES,
+  buildDefaultLayout,
 } from '@/lib/printing/labelLayout';
 import type { Orientation } from '@/lib/printing/printSettings';
 import { LABEL_PADDING_MM } from '@/lib/printing/thermal';
@@ -23,19 +24,27 @@ interface Props {
   layout: LabelLayout;
 }
 
+const layoutFits = (layout: LabelLayout, widthMm: number, heightMm: number): boolean => {
+  return layout.elements.every((el) => {
+    const h = el.field === 'qr' ? el.wMm : Math.max(2, el.fontSize * 0.5);
+    return el.xMm >= 0 && el.yMm >= 0 && el.xMm + el.wMm <= widthMm + 0.5 && el.yMm + h <= heightMm + 0.5;
+  });
+};
+
 export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent, layout }: Props) {
-  const dW = Math.max(10, widthMm);
-  const dH = Math.max(10, heightMm);
+  const pageW = Math.max(10, widthMm);
+  const pageH = Math.max(10, heightMm);
 
   // ─── Misma lógica que printThermalLabel ────────────────────────────────
-  const designIsPortrait = dH >= dW;
-  const wantPortrait = orientation !== 'landscape';
-  let rot: 0 | 90 | 180 | 270 = designIsPortrait === wantPortrait ? 0 : 90;
+  const longSide = Math.max(pageW, pageH);
+  const shortSide = Math.min(pageW, pageH);
+  const contentW = orientation === 'landscape' ? longSide : shortSide;
+  const contentH = orientation === 'landscape' ? shortSide : longSide;
+  const samePhysicalDirection = Math.abs(contentW - pageW) < 0.01 && Math.abs(contentH - pageH) < 0.01;
+  let rot: 0 | 90 | 180 | 270 = samePhysicalDirection ? 0 : 90;
   if (rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
 
   const swap = rot === 90 || rot === 270;
-  const pageW = dW;
-  const pageH = dH;
 
   // Escala visual: limitar el lado mayor a 260px
   const MAX_PX = 260;
@@ -52,13 +61,14 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   // Renderizamos el diseño pre-rotación y lo encajamos centrado dentro del
   // papel físico fijo, igual que `composeFixedPaperCanvas` en thermal.ts.
   const pxPerMm = scale;
-  const designPxW = dW * pxPerMm;
-  const designPxH = dH * pxPerMm;
+  const designPxW = contentW * pxPerMm;
+  const designPxH = contentH * pxPerMm;
   const rotatedPxW = swap ? designPxH : designPxW;
   const rotatedPxH = swap ? designPxW : designPxH;
   const fit = Math.min(innerPxW / rotatedPxW, innerPxH / rotatedPxH);
   const centerX = padPx + innerPxW / 2;
   const centerY = padPx + innerPxH / 2;
+  const previewLayout = layoutFits(layout, contentW, contentH) ? layout : buildDefaultLayout(contentW, contentH);
 
   const pdfOrientation: 'portrait' | 'landscape' = pageW >= pageH ? 'landscape' : 'portrait';
 
@@ -95,7 +105,7 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
               transformOrigin: 'center center',
             }}
           >
-            {layout.elements.map(el => {
+            {previewLayout.elements.map(el => {
               const isQr = el.field === 'qr';
               const w = el.wMm * pxPerMm;
               const h = (isQr ? el.wMm : Math.max(2, el.fontSize * 0.5)) * pxPerMm;

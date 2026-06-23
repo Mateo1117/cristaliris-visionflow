@@ -24,6 +24,7 @@ import {
 } from '@/lib/printing/printSettings';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
 import { LabelDesigner } from '@/components/settings/LabelDesigner';
+import { PdfLabelPreview } from '@/components/settings/PdfLabelPreview';
 import { buildDefaultLayout, type LabelLayout } from '@/lib/printing/labelLayout';
 
 export default function SettingsPage() {

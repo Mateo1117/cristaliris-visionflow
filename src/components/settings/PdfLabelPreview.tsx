@@ -22,6 +22,12 @@ interface Props {
   orientation: Orientation;
   rotateContent?: boolean;
   layout: LabelLayout;
+  /** Calibración por dispositivo: margen interno (sobreescribe el padding por defecto). */
+  marginMm?: number;
+  /** Calibración: desplazamiento horizontal en mm. */
+  offsetXMm?: number;
+  /** Calibración: desplazamiento vertical en mm. */
+  offsetYMm?: number;
 }
 
 const layoutFits = (layout: LabelLayout, widthMm: number, heightMm: number): boolean => {

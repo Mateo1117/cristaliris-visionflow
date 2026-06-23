@@ -14,6 +14,7 @@ import {
   type Orientation,
 } from './printSettings';
 import { buildDefaultLayout, type LabelElement, type LabelField, type LabelLayout } from './labelLayout';
+import { loadLabelCalibration } from './calibration';
 
 const COMPANY = {
   nombre: 'Cristal Iris',

@@ -13,6 +13,7 @@ import {
   SAMPLE_VALUES,
 } from '@/lib/printing/labelLayout';
 import type { Orientation } from '@/lib/printing/printSettings';
+import { LABEL_PADDING_MM } from '@/lib/printing/thermal';
 
 interface Props {
   widthMm: number;

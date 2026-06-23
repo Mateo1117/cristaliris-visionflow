@@ -434,6 +434,13 @@ function PrintSettingsTab() {
         </CardContent>
       </Card>
 
+      <WebUsbPrinterCard
+        pageWmm={settings.label.widthMm}
+        pageHmm={settings.label.heightMm}
+      />
+
+
+
 
       <div className="flex justify-end items-center gap-2">
         {loading && <span className="text-xs text-muted-foreground mr-auto">Cargando desde la base de datos…</span>}

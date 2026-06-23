@@ -416,12 +416,19 @@ function PrintSettingsTab() {
             Selecciona un elemento para ajustar tamaño, fuente y alineación.
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <LabelDesigner
             widthMm={settings.label.widthMm}
             heightMm={settings.label.heightMm}
             layout={settings.labelLayout || buildDefaultLayout(settings.label.widthMm, settings.label.heightMm)}
             onChange={(l: LabelLayout) => setSettings(prev => ({ ...prev, labelLayout: l }))}
+          />
+          <PdfLabelPreview
+            widthMm={settings.label.widthMm}
+            heightMm={settings.label.heightMm}
+            orientation={settings.label.orientation}
+            rotateContent={settings.label.rotateContent}
+            layout={settings.labelLayout || buildDefaultLayout(settings.label.widthMm, settings.label.heightMm)}
           />
         </CardContent>
       </Card>

@@ -377,6 +377,8 @@ const openHtmlPrint = (
   contentH: number,
   rot: 0 | 90 | 180 | 270,
   padMm: number,
+  offsetXMm: number,
+  offsetYMm: number,
   title: string,
 ) => {
   const w = window.open('', '_blank', 'width=420,height=640');
@@ -416,8 +418,8 @@ const openHtmlPrint = (
   }
   .label .content {
     position: absolute;
-    left: calc(50% - ${contentW / 2}mm);
-    top: calc(50% - ${contentH / 2}mm);
+    left: calc(50% - ${contentW / 2}mm + ${offsetXMm}mm);
+    top: calc(50% - ${contentH / 2}mm + ${offsetYMm}mm);
     width: ${contentW}mm;
     height: ${contentH}mm;
     transform-origin: center center;

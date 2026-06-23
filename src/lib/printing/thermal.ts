@@ -362,23 +362,74 @@ export const printThermalLabel = async (data: LabelData) => {
   const finalCanvas = rotateCanvas(designCanvas, rot);
   const imgDataUrl = finalCanvas.toDataURL('image/png');
 
-  // 3) La página del PDF SIEMPRE coincide con el canvas final (sin estirar).
+  // 3) Imprimir desde HTML usando @page { size: WxH mm; margin: 0 } — la única
+  //    forma confiable de que el driver de la impresora respete el tamaño físico
+  //    de la etiqueta (los visores PDF suelen escalar al papel por defecto del SO).
   const pageW = finalCanvas.width / PX_PER_MM;
   const pageH = finalCanvas.height / PX_PER_MM;
-  const orientation: 'portrait' | 'landscape' = pageW >= pageH ? 'landscape' : 'portrait';
-
-  const doc = new jsPDF({
-    unit: 'mm',
-    format: [pageW, pageH],
-    orientation,
-  });
-  // Padding interno fijo: el contenido se inserta 1 mm hacia adentro en todos
-  // los bordes para evitar recortes del rodillo / cabezal térmico.
   const pad = LABEL_PADDING_MM;
   const innerW = Math.max(1, pageW - pad * 2);
   const innerH = Math.max(1, pageH - pad * 2);
-  doc.addImage(imgDataUrl, 'PNG', pad, pad, innerW, innerH, undefined, 'FAST');
 
-  openPdfPrint(doc, `Etiqueta ${data.numero}`);
+  openHtmlPrint(imgDataUrl, pageW, pageH, pad, innerW, innerH, `Etiqueta ${data.numero}`);
+};
+
+/**
+ * Abre una ventana HTML con `@page` configurado al tamaño EXACTO de la etiqueta
+ * y dispara `window.print()`. Esto evita que el driver escale a Letter/A4.
+ */
+const openHtmlPrint = (
+  imgDataUrl: string,
+  pageW: number,
+  pageH: number,
+  pad: number,
+  innerW: number,
+  innerH: number,
+  title: string,
+) => {
+  const w = window.open('', '_blank', 'width=420,height=640');
+  if (!w) return;
+  const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${title}</title>
+<style>
+  @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { width: ${pageW}mm; height: ${pageH}mm; }
+  .label {
+    position: relative;
+    width: ${pageW}mm;
+    height: ${pageH}mm;
+    overflow: hidden;
+    page-break-after: avoid;
+  }
+  .label img {
+    position: absolute;
+    left: ${pad}mm;
+    top: ${pad}mm;
+    width: ${innerW}mm;
+    height: ${innerH}mm;
+    image-rendering: pixelated;
+  }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+  <div class="label"><img src="${imgDataUrl}" alt="" /></div>
+  <script>
+    window.addEventListener('load', function () {
+      var img = document.querySelector('img');
+      var go = function () { try { window.focus(); window.print(); } catch(e){} };
+      if (img && !img.complete) { img.addEventListener('load', function(){ setTimeout(go, 80); }); }
+      else { setTimeout(go, 80); }
+    });
+  </script>
+</body>
+</html>`;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 };
 

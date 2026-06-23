@@ -369,7 +369,12 @@ export const printThermalLabel = async (data: LabelData) => {
     format: [pageW, pageH],
     orientation,
   });
-  doc.addImage(imgDataUrl, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+  // Padding interno fijo: el contenido se inserta 1 mm hacia adentro en todos
+  // los bordes para evitar recortes del rodillo / cabezal térmico.
+  const pad = LABEL_PADDING_MM;
+  const innerW = Math.max(1, pageW - pad * 2);
+  const innerH = Math.max(1, pageH - pad * 2);
+  doc.addImage(imgDataUrl, 'PNG', pad, pad, innerW, innerH, undefined, 'FAST');
 
   openPdfPrint(doc, `Etiqueta ${data.numero}`);
 };

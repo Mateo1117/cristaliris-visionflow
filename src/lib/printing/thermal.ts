@@ -397,25 +397,26 @@ const openHtmlPrint = (
   html, body { margin: 0; padding: 0; background: #fff; }
   body { width: ${pageW}mm; height: ${pageH}mm; }
   .label {
-    position: relative;
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
     width: ${pageW}mm;
     height: ${pageH}mm;
+    padding: ${padMm}mm;
     overflow: hidden;
     page-break-after: avoid;
   }
   .label .content {
-    position: absolute;
-    left: 50%;
-    top: 50%;
+    flex: none;
     width: ${contentW}mm;
     height: ${contentH}mm;
     transform-origin: center center;
-    transform: translate(-50%, -50%) rotate(${rot}deg) scale(${scale});
+    transform: rotate(${rot}deg) scale(${scale});
   }
   .label .content img {
     display: block;
-    width: ${contentW}mm;
-    height: ${contentH}mm;
+    width: 100%;
+    height: 100%;
     image-rendering: pixelated;
   }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

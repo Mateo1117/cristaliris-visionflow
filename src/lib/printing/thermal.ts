@@ -328,16 +328,15 @@ const resolveLabelPrint = (
   cfg: PrintSize,
   savedLayout?: LabelLayout,
 ): { pageW: number; pageH: number; contentW: number; contentH: number; rot: 0 | 90 | 180 | 270; layout: LabelLayout } => {
+  // WYSIWYG: el diseño usa EXACTAMENTE las dimensiones físicas del papel.
+  // Sin rotaciones automáticas — lo que ves en el diseñador es lo que sale.
+  // El checkbox "Rotar contenido 90°" sigue disponible para compensar drivers
+  // térmicos que rotan automáticamente.
   const pageW = Math.max(10, cfg.widthMm);
   const pageH = Math.max(10, cfg.heightMm);
-  const longSide = Math.max(pageW, pageH);
-  const shortSide = Math.min(pageW, pageH);
-  const wantsLandscape = cfg.orientation === 'landscape';
-  const contentW = wantsLandscape ? longSide : shortSide;
-  const contentH = wantsLandscape ? shortSide : longSide;
-  const samePhysicalDirection = Math.abs(contentW - pageW) < 0.01 && Math.abs(contentH - pageH) < 0.01;
-  let rot: 0 | 90 | 180 | 270 = samePhysicalDirection ? 0 : 90;
-  if (cfg.rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
+  const contentW = pageW;
+  const contentH = pageH;
+  const rot: 0 | 90 | 180 | 270 = cfg.rotateContent ? 90 : 0;
 
   const candidate = savedLayout?.elements?.length ? savedLayout : undefined;
   const layout = candidate && layoutFits(candidate, contentW, contentH)

@@ -394,12 +394,18 @@ const openHtmlPrint = (
 <title>${title}</title>
 <style>
   @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
-  html, body { margin: 0; padding: 0; background: #fff; }
-  body { width: ${pageW}mm; height: ${pageH}mm; }
+  html, body {
+    width: ${pageW}mm;
+    height: ${pageH}mm;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    overflow: hidden;
+  }
   .label {
     box-sizing: border-box;
-    display: grid;
-    place-items: center;
+    position: relative;
+    display: block;
     width: ${pageW}mm;
     height: ${pageH}mm;
     padding: ${padMm}mm;
@@ -407,7 +413,9 @@ const openHtmlPrint = (
     page-break-after: avoid;
   }
   .label .content {
-    flex: none;
+    position: absolute;
+    left: calc(50% - ${contentW / 2}mm);
+    top: calc(50% - ${contentH / 2}mm);
     width: ${contentW}mm;
     height: ${contentH}mm;
     transform-origin: center center;

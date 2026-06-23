@@ -11,6 +11,7 @@ import {
   type LabelLayout,
   FIELD_LABELS,
   SAMPLE_VALUES,
+  buildDefaultLayout,
 } from '@/lib/printing/labelLayout';
 import type { Orientation } from '@/lib/printing/printSettings';
 import { LABEL_PADDING_MM } from '@/lib/printing/thermal';
@@ -22,6 +23,13 @@ interface Props {
   rotateContent?: boolean;
   layout: LabelLayout;
 }
+
+const layoutFits = (layout: LabelLayout, widthMm: number, heightMm: number): boolean => {
+  return layout.elements.every((el) => {
+    const h = el.field === 'qr' ? el.wMm : Math.max(2, el.fontSize * 0.5);
+    return el.xMm >= 0 && el.yMm >= 0 && el.xMm + el.wMm <= widthMm + 0.5 && el.yMm + h <= heightMm + 0.5;
+  });
+};
 
 export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent, layout }: Props) {
   const pageW = Math.max(10, widthMm);
@@ -60,6 +68,7 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   const fit = Math.min(innerPxW / rotatedPxW, innerPxH / rotatedPxH);
   const centerX = padPx + innerPxW / 2;
   const centerY = padPx + innerPxH / 2;
+  const previewLayout = layoutFits(layout, contentW, contentH) ? layout : buildDefaultLayout(contentW, contentH);
 
   const pdfOrientation: 'portrait' | 'landscape' = pageW >= pageH ? 'landscape' : 'portrait';
 
@@ -96,7 +105,7 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
               transformOrigin: 'center center',
             }}
           >
-            {layout.elements.map(el => {
+            {previewLayout.elements.map(el => {
               const isQr = el.field === 'qr';
               const w = el.wMm * pxPerMm;
               const h = (isQr ? el.wMm : Math.max(2, el.fontSize * 0.5)) * pxPerMm;

@@ -414,12 +414,12 @@ const openHtmlPrint = (
   }
   .label .content {
     position: absolute;
-    left: 50%;
-    top: 50%;
+    left: calc(50% - ${contentW / 2}mm);
+    top: calc(50% - ${contentH / 2}mm);
     width: ${contentW}mm;
     height: ${contentH}mm;
     transform-origin: center center;
-    transform: translate(-50%, -50%) rotate(${rot}deg) scale(${scale});
+    transform: rotate(${rot}deg) scale(${scale});
   }
   .label .content img {
     display: block;

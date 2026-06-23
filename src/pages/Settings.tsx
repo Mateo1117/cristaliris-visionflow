@@ -221,6 +221,10 @@ function PrintSettingsTab() {
   const [settings, setSettings] = useState<PrintSettings>(() => loadPrintSettings());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const labelLongSide = Math.max(settings.label.widthMm, settings.label.heightMm);
+  const labelShortSide = Math.min(settings.label.widthMm, settings.label.heightMm);
+  const labelDesignWidth = settings.label.orientation === 'landscape' ? labelLongSide : labelShortSide;
+  const labelDesignHeight = settings.label.orientation === 'landscape' ? labelShortSide : labelLongSide;
 
   // Carga inicial desde la BD (rehidrata caché) y refresca el estado.
   useEffect(() => {
@@ -418,9 +422,9 @@ function PrintSettingsTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <LabelDesigner
-            widthMm={settings.label.widthMm}
-            heightMm={settings.label.heightMm}
-            layout={settings.labelLayout || buildDefaultLayout(settings.label.widthMm, settings.label.heightMm)}
+            widthMm={labelDesignWidth}
+            heightMm={labelDesignHeight}
+            layout={settings.labelLayout || buildDefaultLayout(labelDesignWidth, labelDesignHeight)}
             onChange={(l: LabelLayout) => setSettings(prev => ({ ...prev, labelLayout: l }))}
           />
           <PdfLabelPreview
@@ -428,7 +432,7 @@ function PrintSettingsTab() {
             heightMm={settings.label.heightMm}
             orientation={settings.label.orientation}
             rotateContent={settings.label.rotateContent}
-            layout={settings.labelLayout || buildDefaultLayout(settings.label.widthMm, settings.label.heightMm)}
+            layout={settings.labelLayout || buildDefaultLayout(labelDesignWidth, labelDesignHeight)}
           />
         </CardContent>
       </Card>

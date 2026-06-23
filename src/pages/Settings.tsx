@@ -26,6 +26,13 @@ import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
 import { LabelDesigner } from '@/components/settings/LabelDesigner';
 import { PdfLabelPreview } from '@/components/settings/PdfLabelPreview';
 import { buildDefaultLayout, type LabelLayout } from '@/lib/printing/labelLayout';
+import {
+  loadLabelCalibration,
+  saveLabelCalibration,
+  resetLabelCalibration,
+  DEFAULT_LABEL_CALIBRATION,
+  type LabelCalibration,
+} from '@/lib/printing/calibration';
 
 export default function SettingsPage() {
   const [showSedeForm, setShowSedeForm] = useState(false);

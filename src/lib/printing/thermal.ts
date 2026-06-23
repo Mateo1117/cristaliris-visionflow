@@ -237,34 +237,47 @@ const fieldValue = (field: LabelField, data: LabelData, customText?: string): st
   }
 };
 
-export const printThermalLabel = async (data: LabelData) => {
-  const settings = loadPrintSettings();
-  const cfg = settings.label;
-  const { W, H, orientation } = resolveFormat(cfg);
+/** Carga una imagen y resuelve cuando esté lista. */
+const loadImage = (src: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 
-  const pageW = orientation === 'landscape' ? Math.max(W, H) : Math.min(W, H);
-  const pageH = orientation === 'landscape' ? Math.min(W, H) : Math.max(W, H);
+/** Renderiza el layout completo a un canvas (en pixeles) con el tamaño de diseño. */
+const renderLayoutToCanvas = async (
+  layout: LabelLayout,
+  data: LabelData,
+  designWmm: number,
+  designHmm: number,
+  pxPerMm: number,
+): Promise<HTMLCanvasElement> => {
+  const W = Math.max(1, Math.round(designWmm * pxPerMm));
+  const H = Math.max(1, Math.round(designHmm * pxPerMm));
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#000000';
 
-  const layout: LabelLayout = settings.labelLayout && settings.labelLayout.elements?.length
-    ? settings.labelLayout
-    : buildDefaultLayout(pageW, pageH);
+  // 1 pt = 1/72 inch ; 1 inch = 25.4 mm  →  1 pt = (pxPerMm * 25.4 / 72) px
+  const ptToPx = (pt: number) => pt * pxPerMm * 25.4 / 72;
 
-  const doc = new jsPDF({ unit: 'mm', format: [W, H], orientation });
-  doc.setFont('helvetica', 'normal');
-
-  // Renderiza cada elemento del layout
   for (const el of layout.elements) {
     if (el.field === 'qr') {
       try {
-        const px = Math.max(128, Math.round(el.wMm * 16));
-        // Genera PNG directamente con qrcode (independiente del DOM).
+        const sidePx = Math.max(64, Math.round(el.wMm * pxPerMm));
         const pngUrl = await QRCode.toDataURL(data.qrPayload || data.numero || ' ', {
           errorCorrectionLevel: 'M',
           margin: 0,
-          width: px,
+          width: sidePx,
           color: { dark: '#000000', light: '#FFFFFF' },
         });
-        doc.addImage(pngUrl, 'PNG', el.xMm, el.yMm, el.wMm, el.wMm, undefined, 'FAST');
+        const img = await loadImage(pngUrl);
+        ctx.drawImage(img, el.xMm * pxPerMm, el.yMm * pxPerMm, el.wMm * pxPerMm, el.wMm * pxPerMm);
       } catch (e) {
         console.error('QR render failed', e);
       }
@@ -275,17 +288,87 @@ export const printThermalLabel = async (data: LabelData) => {
     if (!raw) continue;
     const txt = (el.prefix || '') + raw;
 
-    doc.setFont('helvetica', el.bold ? 'bold' : 'normal');
-    doc.setFontSize(Math.max(4, el.fontSize));
-
-    const clipped = clipText(doc, txt, Math.max(2, el.wMm));
+    const fontPx = ptToPx(Math.max(4, el.fontSize));
+    ctx.font = `${el.bold ? 'bold ' : ''}${fontPx}px Helvetica, Arial, sans-serif`;
+    ctx.textBaseline = 'top';
     const align = el.align || 'left';
-    const baselineY = el.yMm + el.fontSize * 0.35; // baseline aproximada
-    let x = el.xMm;
-    if (align === 'center') x = el.xMm + el.wMm / 2;
-    else if (align === 'right') x = el.xMm + el.wMm;
-    doc.text(clipped, x, baselineY, { align });
+    ctx.textAlign = align as CanvasTextAlign;
+    const maxWpx = Math.max(4, el.wMm * pxPerMm);
+
+    // Clip con elipsis
+    let display = txt;
+    if (ctx.measureText(display).width > maxWpx) {
+      while (display.length > 1 && ctx.measureText(display + '…').width > maxWpx) {
+        display = display.slice(0, -1);
+      }
+      display = display + '…';
+    }
+
+    let x = el.xMm * pxPerMm;
+    if (align === 'center') x += maxWpx / 2;
+    else if (align === 'right') x += maxWpx;
+    ctx.fillText(display, x, el.yMm * pxPerMm);
   }
+
+  return canvas;
+};
+
+/** Rota un canvas 90/180/270 grados y devuelve uno nuevo. */
+const rotateCanvas = (src: HTMLCanvasElement, deg: 0 | 90 | 180 | 270): HTMLCanvasElement => {
+  if (deg === 0) return src;
+  const out = document.createElement('canvas');
+  if (deg === 180) { out.width = src.width; out.height = src.height; }
+  else { out.width = src.height; out.height = src.width; }
+  const c = out.getContext('2d')!;
+  c.fillStyle = '#ffffff';
+  c.fillRect(0, 0, out.width, out.height);
+  c.save();
+  if (deg === 90)  { c.translate(out.width, 0); c.rotate(Math.PI / 2); }
+  if (deg === 180) { c.translate(out.width, out.height); c.rotate(Math.PI); }
+  if (deg === 270) { c.translate(0, out.height); c.rotate(-Math.PI / 2); }
+  c.drawImage(src, 0, 0);
+  c.restore();
+  return out;
+};
+
+export const printThermalLabel = async (data: LabelData) => {
+  const settings = loadPrintSettings();
+  const cfg = settings.label;
+
+  // Dimensiones de DISEÑO (las que el usuario configuró en el diseñador).
+  const dW = Math.max(10, cfg.widthMm);
+  const dH = Math.max(10, cfg.heightMm);
+
+  const layout: LabelLayout = settings.labelLayout && settings.labelLayout.elements?.length
+    ? settings.labelLayout
+    : buildDefaultLayout(dW, dH);
+
+  // 1) Render del layout al tamaño de diseño (vector → raster ~300dpi).
+  const PX_PER_MM = 12;
+  const designCanvas = await renderLayoutToCanvas(layout, data, dW, dH, PX_PER_MM);
+
+  // 2) Dimensiones de la página de salida según la orientación pedida.
+  const wantPortrait = cfg.orientation !== 'landscape';
+  const pageW = wantPortrait ? Math.min(dW, dH) : Math.max(dW, dH);
+  const pageH = wantPortrait ? Math.max(dW, dH) : Math.min(dW, dH);
+
+  // 3) Rotación necesaria para que el diseño calce en la página.
+  //    Si el aspecto del diseño no coincide con el de la página, rotar 90°.
+  const designIsPortrait = dH >= dW;
+  let rot: 0 | 90 | 180 | 270 = (designIsPortrait === wantPortrait) ? 0 : 90;
+  // El usuario puede forzar 90° extra (compensación de driver térmico)
+  if (cfg.rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
+
+  const finalCanvas = rotateCanvas(designCanvas, rot);
+  const imgDataUrl = finalCanvas.toDataURL('image/png');
+
+  // 4) PDF con tamaño exacto de la página, orientación coherente.
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: [pageW, pageH],
+    orientation: wantPortrait ? 'portrait' : 'landscape',
+  });
+  doc.addImage(imgDataUrl, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
 
   openPdfPrint(doc, `Etiqueta ${data.numero}`);
 };

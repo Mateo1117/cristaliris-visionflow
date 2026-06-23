@@ -433,10 +433,7 @@ function PrintSettingsTab() {
         </CardContent>
       </Card>
 
-      <WebUsbPrinterCard
-        pageWmm={settings.label.widthMm}
-        pageHmm={settings.label.heightMm}
-      />
+
 
 
 

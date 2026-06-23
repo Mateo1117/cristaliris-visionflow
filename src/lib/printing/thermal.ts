@@ -316,88 +316,50 @@ const renderLayoutToCanvas = async (
   return canvas;
 };
 
-/** Rota un canvas 90/180/270 grados y devuelve uno nuevo. */
-const rotateCanvas = (src: HTMLCanvasElement, deg: 0 | 90 | 180 | 270): HTMLCanvasElement => {
-  if (deg === 0) return src;
-  const out = document.createElement('canvas');
-  if (deg === 180) { out.width = src.width; out.height = src.height; }
-  else { out.width = src.height; out.height = src.width; }
-  const c = out.getContext('2d')!;
-  c.fillStyle = '#ffffff';
-  c.fillRect(0, 0, out.width, out.height);
-  c.save();
-  if (deg === 90)  { c.translate(out.width, 0); c.rotate(Math.PI / 2); }
-  if (deg === 180) { c.translate(out.width, out.height); c.rotate(Math.PI); }
-  if (deg === 270) { c.translate(0, out.height); c.rotate(-Math.PI / 2); }
-  c.drawImage(src, 0, 0);
-  c.restore();
-  return out;
+const layoutFits = (layout: LabelLayout, widthMm: number, heightMm: number): boolean => {
+  return layout.elements.every((el) => {
+    const h = el.field === 'qr' ? el.wMm : Math.max(2, el.fontSize * 0.5);
+    return el.xMm >= 0 && el.yMm >= 0 && el.xMm + el.wMm <= widthMm + 0.5 && el.yMm + h <= heightMm + 0.5;
+  });
 };
 
-/**
- * Compone la imagen final dentro del papel FÍSICO configurado.
- * Importante: no cambiamos el tamaño @page al rotar, porque muchos drivers
- * térmicos vuelven a rotar/escalar cuando reciben 50×30 en vez de 30×50.
- */
-const composeFixedPaperCanvas = (
-  content: HTMLCanvasElement,
-  paperWmm: number,
-  paperHmm: number,
-  padMm: number,
-  pxPerMm: number,
-): HTMLCanvasElement => {
-  const out = document.createElement('canvas');
-  out.width = Math.max(1, Math.round(paperWmm * pxPerMm));
-  out.height = Math.max(1, Math.round(paperHmm * pxPerMm));
+const resolveLabelPrint = (
+  cfg: PrintSize,
+  savedLayout?: LabelLayout,
+): { pageW: number; pageH: number; contentW: number; contentH: number; rot: 0 | 90 | 180 | 270; layout: LabelLayout } => {
+  const pageW = Math.max(10, cfg.widthMm);
+  const pageH = Math.max(10, cfg.heightMm);
+  const longSide = Math.max(pageW, pageH);
+  const shortSide = Math.min(pageW, pageH);
+  const wantsLandscape = cfg.orientation === 'landscape';
+  const contentW = wantsLandscape ? longSide : shortSide;
+  const contentH = wantsLandscape ? shortSide : longSide;
+  const samePhysicalDirection = Math.abs(contentW - pageW) < 0.01 && Math.abs(contentH - pageH) < 0.01;
+  let rot: 0 | 90 | 180 | 270 = samePhysicalDirection ? 0 : 90;
+  if (cfg.rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
 
-  const ctx = out.getContext('2d')!;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.imageSmoothingEnabled = false;
+  const candidate = savedLayout?.elements?.length ? savedLayout : undefined;
+  const layout = candidate && layoutFits(candidate, contentW, contentH)
+    ? candidate
+    : buildDefaultLayout(contentW, contentH);
 
-  const padPx = Math.max(0, Math.round(padMm * pxPerMm));
-  const innerW = Math.max(1, out.width - padPx * 2);
-  const innerH = Math.max(1, out.height - padPx * 2);
-  const fit = Math.min(innerW / content.width, innerH / content.height);
-  const drawW = Math.max(1, Math.round(content.width * fit));
-  const drawH = Math.max(1, Math.round(content.height * fit));
-  const x = padPx + Math.round((innerW - drawW) / 2);
-  const y = padPx + Math.round((innerH - drawH) / 2);
-
-  ctx.drawImage(content, x, y, drawW, drawH);
-  return out;
+  return { pageW, pageH, contentW, contentH, rot, layout };
 };
 
 export const printThermalLabel = async (data: LabelData) => {
   const settings = loadPrintSettings();
   const cfg = settings.label;
 
-  // Dimensiones de DISEÑO (las que el usuario configuró en el diseñador).
-  const dW = Math.max(10, cfg.widthMm);
-  const dH = Math.max(10, cfg.heightMm);
-
-  const layout: LabelLayout = settings.labelLayout && settings.labelLayout.elements?.length
-    ? settings.labelLayout
-    : buildDefaultLayout(dW, dH);
-
-  // Lógica de rotación (aplicada vía CSS en el HTML — NO se rota el canvas):
-  //  - `orientation` indica la orientación FINAL deseada. Si el aspecto del
-  //    diseño no coincide con la del papel físico, se rota 90°.
-  //  - `rotateContent` suma 90° extra (compensación driver térmico).
-  const designIsPortrait = dH >= dW;
-  const wantPortrait = cfg.orientation !== 'landscape';
-  let rot: 0 | 90 | 180 | 270 = (designIsPortrait === wantPortrait) ? 0 : 90;
-  if (cfg.rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
-
   const pad = LABEL_PADDING_MM;
+  const { pageW, pageH, contentW, contentH, rot, layout } = resolveLabelPrint(cfg, settings.labelLayout);
 
   // El @page conserva SIEMPRE el tamaño físico (dW × dH).
-  // El contenido se rota dentro del HTML con transform/transform-origin,
-  // y se escala para que el bounding box rotado quepa en el papel.
+  // El diseño sí cambia a vertical/horizontal y luego se rota por CSS si el
+  // papel físico está en la dirección contraria; así no queda pegado arriba.
   const PX_PER_MM = 12;
-  const designCanvas = await renderLayoutToCanvas(layout, data, dW, dH, PX_PER_MM);
+  const designCanvas = await renderLayoutToCanvas(layout, data, contentW, contentH, PX_PER_MM);
   const imgDataUrl = designCanvas.toDataURL('image/png');
-  openHtmlPrint(imgDataUrl, dW, dH, dW, dH, rot, pad, `Etiqueta ${data.numero}`);
+  openHtmlPrint(imgDataUrl, pageW, pageH, contentW, contentH, rot, pad, `Etiqueta ${data.numero}`);
 };
 
 /**

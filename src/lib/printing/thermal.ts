@@ -347,26 +347,24 @@ export const printThermalLabel = async (data: LabelData) => {
   const PX_PER_MM = 12;
   const designCanvas = await renderLayoutToCanvas(layout, data, dW, dH, PX_PER_MM);
 
-  // 2) Dimensiones de la página de salida según la orientación pedida.
-  const wantPortrait = cfg.orientation !== 'landscape';
-  const pageW = wantPortrait ? Math.min(dW, dH) : Math.max(dW, dH);
-  const pageH = wantPortrait ? Math.max(dW, dH) : Math.min(dW, dH);
-
-  // 3) Rotación necesaria para que el diseño calce en la página.
-  //    Si el aspecto del diseño no coincide con el de la página, rotar 90°.
-  const designIsPortrait = dH >= dW;
-  let rot: 0 | 90 | 180 | 270 = (designIsPortrait === wantPortrait) ? 0 : 90;
-  // El usuario puede forzar 90° extra (compensación de driver térmico)
+  // 2) Rotación deseada por configuración:
+  //    - orientation: 'landscape' rota 90° respecto al diseño.
+  //    - rotateContent (compensación driver) suma otros 90°.
+  let rot: 0 | 90 | 180 | 270 = cfg.orientation === 'landscape' ? 90 : 0;
   if (cfg.rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
 
   const finalCanvas = rotateCanvas(designCanvas, rot);
   const imgDataUrl = finalCanvas.toDataURL('image/png');
 
-  // 4) PDF con tamaño exacto de la página, orientación coherente.
+  // 3) La página del PDF SIEMPRE coincide con el canvas final (sin estirar).
+  const pageW = finalCanvas.width / PX_PER_MM;
+  const pageH = finalCanvas.height / PX_PER_MM;
+  const orientation: 'portrait' | 'landscape' = pageW >= pageH ? 'landscape' : 'portrait';
+
   const doc = new jsPDF({
     unit: 'mm',
     format: [pageW, pageH],
-    orientation: wantPortrait ? 'portrait' : 'landscape',
+    orientation,
   });
   doc.addImage(imgDataUrl, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
 

@@ -334,6 +334,40 @@ const rotateCanvas = (src: HTMLCanvasElement, deg: 0 | 90 | 180 | 270): HTMLCanv
   return out;
 };
 
+/**
+ * Compone la imagen final dentro del papel FÍSICO configurado.
+ * Importante: no cambiamos el tamaño @page al rotar, porque muchos drivers
+ * térmicos vuelven a rotar/escalar cuando reciben 50×30 en vez de 30×50.
+ */
+const composeFixedPaperCanvas = (
+  content: HTMLCanvasElement,
+  paperWmm: number,
+  paperHmm: number,
+  padMm: number,
+  pxPerMm: number,
+): HTMLCanvasElement => {
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(paperWmm * pxPerMm));
+  out.height = Math.max(1, Math.round(paperHmm * pxPerMm));
+
+  const ctx = out.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.imageSmoothingEnabled = false;
+
+  const padPx = Math.max(0, Math.round(padMm * pxPerMm));
+  const innerW = Math.max(1, out.width - padPx * 2);
+  const innerH = Math.max(1, out.height - padPx * 2);
+  const fit = Math.min(innerW / content.width, innerH / content.height);
+  const drawW = Math.max(1, Math.round(content.width * fit));
+  const drawH = Math.max(1, Math.round(content.height * fit));
+  const x = padPx + Math.round((innerW - drawW) / 2);
+  const y = padPx + Math.round((innerH - drawH) / 2);
+
+  ctx.drawImage(content, x, y, drawW, drawH);
+  return out;
+};
+
 export const printThermalLabel = async (data: LabelData) => {
   const settings = loadPrintSettings();
   const cfg = settings.label;
@@ -357,16 +391,14 @@ export const printThermalLabel = async (data: LabelData) => {
 
   const pad = LABEL_PADDING_MM;
 
-  // Render del layout a raster, rotación y envío al print HTML con @page.
+  // Render del layout a raster, rotación y envío al print HTML.
+  // El @page conserva SIEMPRE el tamaño físico configurado (ej. 30×50).
   const PX_PER_MM = 12;
   const designCanvas = await renderLayoutToCanvas(layout, data, dW, dH, PX_PER_MM);
-  const finalCanvas = rotateCanvas(designCanvas, rot);
+  const rotatedContent = rotateCanvas(designCanvas, rot);
+  const finalCanvas = composeFixedPaperCanvas(rotatedContent, dW, dH, pad, PX_PER_MM);
   const imgDataUrl = finalCanvas.toDataURL('image/png');
-  const pageW = finalCanvas.width / PX_PER_MM;
-  const pageH = finalCanvas.height / PX_PER_MM;
-  const innerW = Math.max(1, pageW - pad * 2);
-  const innerH = Math.max(1, pageH - pad * 2);
-  openHtmlPrint(imgDataUrl, pageW, pageH, pad, innerW, innerH, `Etiqueta ${data.numero}`);
+  openHtmlPrint(imgDataUrl, dW, dH, `Etiqueta ${data.numero}`);
 };
 
 /**
@@ -377,9 +409,6 @@ const openHtmlPrint = (
   imgDataUrl: string,
   pageW: number,
   pageH: number,
-  pad: number,
-  innerW: number,
-  innerH: number,
   title: string,
 ) => {
   const w = window.open('', '_blank', 'width=420,height=640');
@@ -401,11 +430,9 @@ const openHtmlPrint = (
     page-break-after: avoid;
   }
   .label img {
-    position: absolute;
-    left: ${pad}mm;
-    top: ${pad}mm;
-    width: ${innerW}mm;
-    height: ${innerH}mm;
+    display: block;
+    width: ${pageW}mm;
+    height: ${pageH}mm;
     image-rendering: pixelated;
   }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

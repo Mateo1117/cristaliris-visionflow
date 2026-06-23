@@ -34,8 +34,8 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   if (rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
 
   const swap = rot === 90 || rot === 270;
-  const pageW = swap ? dH : dW;
-  const pageH = swap ? dW : dH;
+  const pageW = dW;
+  const pageH = dH;
 
   // Escala visual: limitar el lado mayor a 260px
   const MAX_PX = 260;
@@ -49,12 +49,16 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   const innerPxW = Math.max(1, pagePxW - padPx * 2);
   const innerPxH = Math.max(1, pagePxH - padPx * 2);
 
-  // Renderizamos el diseño pre-rotación a `scale` y luego aplicamos
-  // `scale(sx, sy) rotate(rot)` para que su bounding box rotado encaje
-  // exactamente en el área interior — replicando `doc.addImage(img, pad, pad, innerW, innerH)`.
+  // Renderizamos el diseño pre-rotación y lo encajamos centrado dentro del
+  // papel físico fijo, igual que `composeFixedPaperCanvas` en thermal.ts.
   const pxPerMm = scale;
-  const sx = innerPxW / pagePxW;
-  const sy = innerPxH / pagePxH;
+  const designPxW = dW * pxPerMm;
+  const designPxH = dH * pxPerMm;
+  const rotatedPxW = swap ? designPxH : designPxW;
+  const rotatedPxH = swap ? designPxW : designPxH;
+  const fit = Math.min(innerPxW / rotatedPxW, innerPxH / rotatedPxH);
+  const centerX = padPx + innerPxW / 2;
+  const centerY = padPx + innerPxH / 2;
 
   const pdfOrientation: 'portrait' | 'landscape' = pageW >= pageH ? 'landscape' : 'portrait';
 
@@ -63,7 +67,7 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
       <div className="flex items-baseline justify-between mb-2">
         <div className="text-sm font-medium">Vista previa del PDF</div>
         <div className="text-[10px] text-muted-foreground">
-          {pageW} × {pageH} mm · {pdfOrientation === 'portrait' ? 'vertical' : 'horizontal'}
+          {pageW} × {pageH} mm fijo · {pdfOrientation === 'portrait' ? 'vertical' : 'horizontal'}
           {rot ? ` · contenido girado ${rot}°` : ''} · padding {pad} mm
         </div>
       </div>
@@ -79,15 +83,15 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
             className="absolute border border-dashed border-muted-foreground/30 pointer-events-none"
             style={{ left: padPx, top: padPx, width: innerPxW, height: innerPxH }}
           />
-          {/* Capa de diseño: tamaño natural dW×dH a `scale`, rotada y escalada al área interior */}
+          {/* Capa de diseño: tamaño natural dW×dH, rotada y centrada en el área interior */}
           <div
             className="absolute"
             style={{
-              width: dW * pxPerMm,
-              height: dH * pxPerMm,
-              left: (pagePxW - dW * pxPerMm) / 2,
-              top: (pagePxH - dH * pxPerMm) / 2,
-              transform: `scale(${sx}, ${sy}) rotate(${rot}deg)`,
+              width: designPxW,
+              height: designPxH,
+              left: centerX - designPxW / 2,
+              top: centerY - designPxH / 2,
+              transform: `rotate(${rot}deg) scale(${fit})`,
               transformOrigin: 'center center',
             }}
           >

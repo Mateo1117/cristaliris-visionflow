@@ -44,7 +44,7 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   // ─── WYSIWYG: el diseño ocupa el papel físico 1:1 ─────────────────────
   const contentW = pageW;
   const contentH = pageH;
-  const rot: 0 | 90 | 180 | 270 = rotateContent ? 90 : 0;
+  const rot = (rotateContent ? 90 : 0) as 0 | 90 | 180 | 270;
   const swap = rot === 90 || rot === 270;
 
   // Escala visual: limitar el lado mayor a 260px

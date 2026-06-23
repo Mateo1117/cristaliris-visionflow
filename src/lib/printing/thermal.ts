@@ -20,6 +20,9 @@ const COMPANY = {
   nit: 'NIT 900.123.456-7',
 };
 
+/** Padding interno fijo de la etiqueta (en mm), aplicado en los 4 bordes. */
+export const LABEL_PADDING_MM = 1;
+
 const fmtCOP = (n: number) =>
   '$' + Math.round(n || 0).toLocaleString('es-CO');
 
@@ -369,7 +372,12 @@ export const printThermalLabel = async (data: LabelData) => {
     format: [pageW, pageH],
     orientation,
   });
-  doc.addImage(imgDataUrl, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
+  // Padding interno fijo: el contenido se inserta 1 mm hacia adentro en todos
+  // los bordes para evitar recortes del rodillo / cabezal térmico.
+  const pad = LABEL_PADDING_MM;
+  const innerW = Math.max(1, pageW - pad * 2);
+  const innerH = Math.max(1, pageH - pad * 2);
+  doc.addImage(imgDataUrl, 'PNG', pad, pad, innerW, innerH, undefined, 'FAST');
 
   openPdfPrint(doc, `Etiqueta ${data.numero}`);
 };

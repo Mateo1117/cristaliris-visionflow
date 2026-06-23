@@ -41,15 +41,10 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   const pageW = Math.max(10, widthMm);
   const pageH = Math.max(10, heightMm);
 
-  // ─── Misma lógica que printThermalLabel ────────────────────────────────
-  const longSide = Math.max(pageW, pageH);
-  const shortSide = Math.min(pageW, pageH);
-  const contentW = orientation === 'landscape' ? longSide : shortSide;
-  const contentH = orientation === 'landscape' ? shortSide : longSide;
-  const samePhysicalDirection = Math.abs(contentW - pageW) < 0.01 && Math.abs(contentH - pageH) < 0.01;
-  let rot: 0 | 90 | 180 | 270 = samePhysicalDirection ? 0 : 90;
-  if (rotateContent) rot = ((rot + 90) % 360) as 0 | 90 | 180 | 270;
-
+  // ─── WYSIWYG: el diseño ocupa el papel físico 1:1 ─────────────────────
+  const contentW = pageW;
+  const contentH = pageH;
+  const rot = (rotateContent ? 90 : 0) as 0 | 90 | 180 | 270;
   const swap = rot === 90 || rot === 270;
 
   // Escala visual: limitar el lado mayor a 260px
@@ -64,8 +59,6 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   const innerPxW = Math.max(1, pagePxW - padPx * 2);
   const innerPxH = Math.max(1, pagePxH - padPx * 2);
 
-  // Renderizamos el diseño pre-rotación y lo encajamos centrado dentro del
-  // papel físico fijo, igual que `composeFixedPaperCanvas` en thermal.ts.
   const pxPerMm = scale;
   const designPxW = contentW * pxPerMm;
   const designPxH = contentH * pxPerMm;

@@ -236,10 +236,10 @@ function PrintSettingsTab() {
   const [calibration, setCalibration] = useState<LabelCalibration>(() => loadLabelCalibration());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const labelLongSide = Math.max(settings.label.widthMm, settings.label.heightMm);
-  const labelShortSide = Math.min(settings.label.widthMm, settings.label.heightMm);
-  const labelDesignWidth = settings.label.orientation === 'landscape' ? labelLongSide : labelShortSide;
-  const labelDesignHeight = settings.label.orientation === 'landscape' ? labelShortSide : labelLongSide;
+  // WYSIWYG: el diseñador trabaja siempre con las dimensiones físicas del papel
+  // (sin intercambiar W↔H según orientación). Lo que se ve es lo que se imprime.
+  const labelDesignWidth = settings.label.widthMm;
+  const labelDesignHeight = settings.label.heightMm;
   const activeLabelLayout = layoutFits(settings.labelLayout, labelDesignWidth, labelDesignHeight)
     ? settings.labelLayout
     : buildDefaultLayout(labelDesignWidth, labelDesignHeight);

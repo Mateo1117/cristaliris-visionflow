@@ -22,6 +22,12 @@ interface Props {
   orientation: Orientation;
   rotateContent?: boolean;
   layout: LabelLayout;
+  /** Calibración por dispositivo: margen interno (sobreescribe el padding por defecto). */
+  marginMm?: number;
+  /** Calibración: desplazamiento horizontal en mm. */
+  offsetXMm?: number;
+  /** Calibración: desplazamiento vertical en mm. */
+  offsetYMm?: number;
 }
 
 const layoutFits = (layout: LabelLayout, widthMm: number, heightMm: number): boolean => {
@@ -31,7 +37,7 @@ const layoutFits = (layout: LabelLayout, widthMm: number, heightMm: number): boo
   });
 };
 
-export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent, layout }: Props) {
+export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent, layout, marginMm, offsetXMm = 0, offsetYMm = 0 }: Props) {
   const pageW = Math.max(10, widthMm);
   const pageH = Math.max(10, heightMm);
 
@@ -52,8 +58,8 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   const pagePxW = pageW * scale;
   const pagePxH = pageH * scale;
 
-  // Padding interno (idéntico al PDF real)
-  const pad = LABEL_PADDING_MM;
+  // Padding interno (idéntico al PDF real) — usa calibración si está definida.
+  const pad = typeof marginMm === 'number' ? marginMm : LABEL_PADDING_MM;
   const padPx = pad * scale;
   const innerPxW = Math.max(1, pagePxW - padPx * 2);
   const innerPxH = Math.max(1, pagePxH - padPx * 2);
@@ -66,8 +72,8 @@ export function PdfLabelPreview({ widthMm, heightMm, orientation, rotateContent,
   const rotatedPxW = swap ? designPxH : designPxW;
   const rotatedPxH = swap ? designPxW : designPxH;
   const fit = Math.min(innerPxW / rotatedPxW, innerPxH / rotatedPxH);
-  const centerX = padPx + innerPxW / 2;
-  const centerY = padPx + innerPxH / 2;
+  const centerX = padPx + innerPxW / 2 + offsetXMm * scale;
+  const centerY = padPx + innerPxH / 2 + offsetYMm * scale;
   const previewLayout = layoutFits(layout, contentW, contentH) ? layout : buildDefaultLayout(contentW, contentH);
 
   const pdfOrientation: 'portrait' | 'landscape' = pageW >= pageH ? 'landscape' : 'portrait';

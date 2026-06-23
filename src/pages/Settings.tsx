@@ -26,6 +26,13 @@ import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
 import { LabelDesigner } from '@/components/settings/LabelDesigner';
 import { PdfLabelPreview } from '@/components/settings/PdfLabelPreview';
 import { buildDefaultLayout, type LabelLayout } from '@/lib/printing/labelLayout';
+import {
+  loadLabelCalibration,
+  saveLabelCalibration,
+  resetLabelCalibration,
+  DEFAULT_LABEL_CALIBRATION,
+  type LabelCalibration,
+} from '@/lib/printing/calibration';
 
 export default function SettingsPage() {
   const [showSedeForm, setShowSedeForm] = useState(false);
@@ -226,6 +233,7 @@ const layoutFits = (layout: LabelLayout | undefined, widthMm: number, heightMm: 
 
 function PrintSettingsTab() {
   const [settings, setSettings] = useState<PrintSettings>(() => loadPrintSettings());
+  const [calibration, setCalibration] = useState<LabelCalibration>(() => loadLabelCalibration());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const labelLongSide = Math.max(settings.label.widthMm, settings.label.heightMm);
@@ -443,7 +451,93 @@ function PrintSettingsTab() {
             orientation={settings.label.orientation}
             rotateContent={settings.label.rotateContent}
             layout={activeLabelLayout}
+            marginMm={calibration.marginMm}
+            offsetXMm={calibration.offsetXMm}
+            offsetYMm={calibration.offsetYMm}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Calibración por dispositivo</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Ajusta el margen interior y el desplazamiento X/Y hasta que la etiqueta salga
+            centrada perfecta en esta impresora. Estos valores se guardan <strong>solo en este
+            dispositivo</strong> (no se sincronizan con otras sedes).
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Margen interior (mm)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                min={0}
+                max={10}
+                value={calibration.marginMm}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 0;
+                  const next = { ...calibration, marginMm: Math.max(0, Math.min(10, v)) };
+                  setCalibration(next); saveLabelCalibration(next);
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Desplazamiento X (mm)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                min={-20}
+                max={20}
+                value={calibration.offsetXMm}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 0;
+                  const next = { ...calibration, offsetXMm: Math.max(-20, Math.min(20, v)) };
+                  setCalibration(next); saveLabelCalibration(next);
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Desplazamiento Y (mm)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                min={-20}
+                max={20}
+                value={calibration.offsetYMm}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 0;
+                  const next = { ...calibration, offsetYMm: Math.max(-20, Math.min(20, v)) };
+                  setCalibration(next); saveLabelCalibration(next);
+                }}
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            Tip: X positivo mueve a la <strong>derecha</strong>, Y positivo mueve hacia <strong>abajo</strong>.
+            Aumenta el margen si la impresora recorta el borde; reduce a 0 si pierdes área útil.
+          </p>
+
+          <div className="flex flex-wrap justify-end gap-2 pt-2 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                resetLabelCalibration();
+                setCalibration(DEFAULT_LABEL_CALIBRATION);
+                toast.success('Calibración restablecida');
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-1" /> Restablecer
+            </Button>
+            <Button type="button" size="sm" onClick={testLabel}>
+              <Printer className="h-4 w-4 mr-1" /> Imprimir prueba
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

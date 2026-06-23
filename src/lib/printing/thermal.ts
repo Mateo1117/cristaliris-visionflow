@@ -14,6 +14,7 @@ import {
   type Orientation,
 } from './printSettings';
 import { buildDefaultLayout, type LabelElement, type LabelField, type LabelLayout } from './labelLayout';
+import { loadLabelCalibration } from './calibration';
 
 const COMPANY = {
   nombre: 'Cristal Iris',
@@ -349,8 +350,9 @@ const resolveLabelPrint = (
 export const printThermalLabel = async (data: LabelData) => {
   const settings = loadPrintSettings();
   const cfg = settings.label;
+  const calib = loadLabelCalibration();
 
-  const pad = LABEL_PADDING_MM;
+  const pad = calib.marginMm;
   const { pageW, pageH, contentW, contentH, rot, layout } = resolveLabelPrint(cfg, settings.labelLayout);
 
   // El @page conserva SIEMPRE el tamaño físico (dW × dH).
@@ -359,7 +361,7 @@ export const printThermalLabel = async (data: LabelData) => {
   const PX_PER_MM = 12;
   const designCanvas = await renderLayoutToCanvas(layout, data, contentW, contentH, PX_PER_MM);
   const imgDataUrl = designCanvas.toDataURL('image/png');
-  openHtmlPrint(imgDataUrl, pageW, pageH, contentW, contentH, rot, pad, `Etiqueta ${data.numero}`);
+  openHtmlPrint(imgDataUrl, pageW, pageH, contentW, contentH, rot, pad, calib.offsetXMm, calib.offsetYMm, `Etiqueta ${data.numero}`);
 };
 
 /**
@@ -375,6 +377,8 @@ const openHtmlPrint = (
   contentH: number,
   rot: 0 | 90 | 180 | 270,
   padMm: number,
+  offsetXMm: number,
+  offsetYMm: number,
   title: string,
 ) => {
   const w = window.open('', '_blank', 'width=420,height=640');
@@ -414,8 +418,8 @@ const openHtmlPrint = (
   }
   .label .content {
     position: absolute;
-    left: calc(50% - ${contentW / 2}mm);
-    top: calc(50% - ${contentH / 2}mm);
+    left: calc(50% - ${contentW / 2}mm + ${offsetXMm}mm);
+    top: calc(50% - ${contentH / 2}mm + ${offsetYMm}mm);
     width: ${contentW}mm;
     height: ${contentH}mm;
     transform-origin: center center;

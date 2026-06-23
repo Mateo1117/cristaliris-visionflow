@@ -14,11 +14,6 @@ import {
   type Orientation,
 } from './printSettings';
 import { buildDefaultLayout, type LabelElement, type LabelField, type LabelLayout } from './labelLayout';
-import {
-  isPrinterConnected,
-  printLabelViaWebUSB,
-  DOTS_PER_MM,
-} from './webusbPrinter';
 
 const COMPANY = {
   nombre: 'Cristal Iris',
@@ -351,7 +346,10 @@ export const printThermalLabel = async (data: LabelData) => {
     ? settings.labelLayout
     : buildDefaultLayout(dW, dH);
 
-  // Lógica de rotación (compartida HTML + WebUSB).
+  // Lógica de rotación:
+  //  - `orientation` indica la orientación FINAL del papel impreso. Si el
+  //     aspecto del diseño no coincide, se rota 90°.
+  //  - `rotateContent` suma otros 90° (compensación driver térmico).
   const designIsPortrait = dH >= dW;
   const wantPortrait = cfg.orientation !== 'landscape';
   let rot: 0 | 90 | 180 | 270 = (designIsPortrait === wantPortrait) ? 0 : 90;
@@ -359,32 +357,7 @@ export const printThermalLabel = async (data: LabelData) => {
 
   const pad = LABEL_PADDING_MM;
 
-  // ─── A) Camino WebUSB (impresión directa, sin driver) ──────────────────
-  if (isPrinterConnected()) {
-    // Renderizar a la resolución NATIVA de la impresora (203 DPI = 8 dots/mm)
-    // pero sólo en el área interior (sin padding) para que la salida ocupe
-    // exactamente innerW × innerH dentro de la etiqueta física.
-    const innerWmm = Math.max(1, (rot === 90 || rot === 270 ? dH : dW) - pad * 2);
-    const innerHmm = Math.max(1, (rot === 90 || rot === 270 ? dW : dH) - pad * 2);
-    // Renderizamos el diseño completo (dW × dH) a una resolución tal que,
-    // tras la rotación, el bbox encaje en innerWmm × innerHmm.
-    const designWdots = rot === 90 || rot === 270 ? innerHmm * DOTS_PER_MM : innerWmm * DOTS_PER_MM;
-    const designHdots = rot === 90 || rot === 270 ? innerWmm * DOTS_PER_MM : innerHmm * DOTS_PER_MM;
-    const pxPerMm = Math.min(designWdots / dW, designHdots / dH);
-    const designCanvas = await renderLayoutToCanvas(layout, data, dW, dH, pxPerMm);
-    const finalCanvas = rotateCanvas(designCanvas, rot);
-    const pageW = rot === 90 || rot === 270 ? dH : dW;
-    const pageH = rot === 90 || rot === 270 ? dW : dH;
-    try {
-      await printLabelViaWebUSB(finalCanvas, pageW, pageH, pad);
-      return;
-    } catch (e) {
-      console.error('[WebUSB] print failed, fallback to HTML:', e);
-      // Si falla, seguimos al camino HTML
-    }
-  }
-
-  // ─── B) Camino HTML (@page) — fallback universal ───────────────────────
+  // Render del layout a raster, rotación y envío al print HTML con @page.
   const PX_PER_MM = 12;
   const designCanvas = await renderLayoutToCanvas(layout, data, dW, dH, PX_PER_MM);
   const finalCanvas = rotateCanvas(designCanvas, rot);

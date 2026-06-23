@@ -233,6 +233,7 @@ const layoutFits = (layout: LabelLayout | undefined, widthMm: number, heightMm: 
 
 function PrintSettingsTab() {
   const [settings, setSettings] = useState<PrintSettings>(() => loadPrintSettings());
+  const [calibration, setCalibration] = useState<LabelCalibration>(() => loadLabelCalibration());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const labelLongSide = Math.max(settings.label.widthMm, settings.label.heightMm);

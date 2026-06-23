@@ -350,8 +350,9 @@ const resolveLabelPrint = (
 export const printThermalLabel = async (data: LabelData) => {
   const settings = loadPrintSettings();
   const cfg = settings.label;
+  const calib = loadLabelCalibration();
 
-  const pad = LABEL_PADDING_MM;
+  const pad = calib.marginMm;
   const { pageW, pageH, contentW, contentH, rot, layout } = resolveLabelPrint(cfg, settings.labelLayout);
 
   // El @page conserva SIEMPRE el tamaño físico (dW × dH).
@@ -360,7 +361,7 @@ export const printThermalLabel = async (data: LabelData) => {
   const PX_PER_MM = 12;
   const designCanvas = await renderLayoutToCanvas(layout, data, contentW, contentH, PX_PER_MM);
   const imgDataUrl = designCanvas.toDataURL('image/png');
-  openHtmlPrint(imgDataUrl, pageW, pageH, contentW, contentH, rot, pad, `Etiqueta ${data.numero}`);
+  openHtmlPrint(imgDataUrl, pageW, pageH, contentW, contentH, rot, pad, calib.offsetXMm, calib.offsetYMm, `Etiqueta ${data.numero}`);
 };
 
 /**

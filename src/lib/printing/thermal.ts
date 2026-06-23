@@ -380,10 +380,10 @@ export const printThermalLabel = async (data: LabelData) => {
     ? settings.labelLayout
     : buildDefaultLayout(dW, dH);
 
-  // Lógica de rotación:
-  //  - `orientation` indica la orientación FINAL del papel impreso. Si el
-  //     aspecto del diseño no coincide, se rota 90°.
-  //  - `rotateContent` suma otros 90° (compensación driver térmico).
+  // Lógica de rotación (aplicada vía CSS en el HTML — NO se rota el canvas):
+  //  - `orientation` indica la orientación FINAL deseada. Si el aspecto del
+  //    diseño no coincide con la del papel físico, se rota 90°.
+  //  - `rotateContent` suma 90° extra (compensación driver térmico).
   const designIsPortrait = dH >= dW;
   const wantPortrait = cfg.orientation !== 'landscape';
   let rot: 0 | 90 | 180 | 270 = (designIsPortrait === wantPortrait) ? 0 : 90;
@@ -391,28 +391,40 @@ export const printThermalLabel = async (data: LabelData) => {
 
   const pad = LABEL_PADDING_MM;
 
-  // Render del layout a raster, rotación y envío al print HTML.
-  // El @page conserva SIEMPRE el tamaño físico configurado (ej. 30×50).
+  // El @page conserva SIEMPRE el tamaño físico (dW × dH).
+  // El contenido se rota dentro del HTML con transform/transform-origin,
+  // y se escala para que el bounding box rotado quepa en el papel.
   const PX_PER_MM = 12;
   const designCanvas = await renderLayoutToCanvas(layout, data, dW, dH, PX_PER_MM);
-  const rotatedContent = rotateCanvas(designCanvas, rot);
-  const finalCanvas = composeFixedPaperCanvas(rotatedContent, dW, dH, pad, PX_PER_MM);
-  const imgDataUrl = finalCanvas.toDataURL('image/png');
-  openHtmlPrint(imgDataUrl, dW, dH, `Etiqueta ${data.numero}`);
+  const imgDataUrl = designCanvas.toDataURL('image/png');
+  openHtmlPrint(imgDataUrl, dW, dH, dW, dH, rot, pad, `Etiqueta ${data.numero}`);
 };
 
 /**
- * Abre una ventana HTML con `@page` configurado al tamaño EXACTO de la etiqueta
- * y dispara `window.print()`. Esto evita que el driver escale a Letter/A4.
+ * Abre una ventana HTML con `@page` al tamaño físico de la etiqueta y rota
+ * el contenido por CSS (transform + transform-origin) sin tocar el papel.
+ * El driver siempre recibe el mismo tamaño de página → no reescala.
  */
 const openHtmlPrint = (
   imgDataUrl: string,
   pageW: number,
   pageH: number,
+  contentW: number,
+  contentH: number,
+  rot: 0 | 90 | 180 | 270,
+  padMm: number,
   title: string,
 ) => {
   const w = window.open('', '_blank', 'width=420,height=640');
   if (!w) return;
+
+  // Bounding box después de rotar el contenido.
+  const bboxW = (rot === 90 || rot === 270) ? contentH : contentW;
+  const bboxH = (rot === 90 || rot === 270) ? contentW : contentH;
+  const innerW = Math.max(1, pageW - padMm * 2);
+  const innerH = Math.max(1, pageH - padMm * 2);
+  const scale = Math.min(innerW / bboxW, innerH / bboxH);
+
   const html = `<!doctype html>
 <html>
 <head>
@@ -429,17 +441,26 @@ const openHtmlPrint = (
     overflow: hidden;
     page-break-after: avoid;
   }
-  .label img {
+  .label .content {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: ${contentW}mm;
+    height: ${contentH}mm;
+    transform-origin: center center;
+    transform: translate(-50%, -50%) rotate(${rot}deg) scale(${scale});
+  }
+  .label .content img {
     display: block;
-    width: ${pageW}mm;
-    height: ${pageH}mm;
+    width: ${contentW}mm;
+    height: ${contentH}mm;
     image-rendering: pixelated;
   }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head>
 <body>
-  <div class="label"><img src="${imgDataUrl}" alt="" /></div>
+  <div class="label"><div class="content"><img src="${imgDataUrl}" alt="" /></div></div>
   <script>
     window.addEventListener('load', function () {
       var img = document.querySelector('img');

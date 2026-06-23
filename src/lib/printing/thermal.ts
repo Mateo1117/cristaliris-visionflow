@@ -14,11 +14,6 @@ import {
   type Orientation,
 } from './printSettings';
 import { buildDefaultLayout, type LabelElement, type LabelField, type LabelLayout } from './labelLayout';
-import {
-  isPrinterConnected,
-  printLabelViaWebUSB,
-  DOTS_PER_MM,
-} from './webusbPrinter';
 
 const COMPANY = {
   nombre: 'Cristal Iris',

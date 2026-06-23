@@ -20,6 +20,9 @@ const COMPANY = {
   nit: 'NIT 900.123.456-7',
 };
 
+/** Padding interno fijo de la etiqueta (en mm), aplicado en los 4 bordes. */
+export const LABEL_PADDING_MM = 1;
+
 const fmtCOP = (n: number) =>
   '$' + Math.round(n || 0).toLocaleString('es-CO');
 

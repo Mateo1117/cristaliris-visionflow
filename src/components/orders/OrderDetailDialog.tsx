@@ -216,7 +216,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     const { data } = await supabase
       .from('historias_clinicas')
       .select('formula_od_esfera, formula_od_cilindro, formula_od_eje, formula_od_adicion, formula_oi_esfera, formula_oi_cilindro, formula_oi_eje, formula_oi_adicion')
-      .eq('paciente_id', item.paciente_id)
+      .eq('paciente_id', (item as any).paciente_id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

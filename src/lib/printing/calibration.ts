@@ -30,7 +30,7 @@ export const loadLabelCalibration = (): LabelCalibration => {
     const p = JSON.parse(raw);
     return {
       marginMm: clamp(Number(p.marginMm), 0, 10, DEFAULT_LABEL_CALIBRATION.marginMm),
-      offsetXMm: clamp(Number(p.offsetXMm), -20, 20, 0),
+      offsetXMm: clamp(Number(p.offsetXMm), -40, 40, 0),
       offsetYMm: clamp(Number(p.offsetYMm), -20, 20, 0),
     };
   } catch {

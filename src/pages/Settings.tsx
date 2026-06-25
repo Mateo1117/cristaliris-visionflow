@@ -489,12 +489,12 @@ function PrintSettingsTab() {
               <Input
                 type="number"
                 step="0.1"
-                min={-20}
-                max={20}
+                min={-40}
+                max={40}
                 value={calibration.offsetXMm}
                 onChange={(e) => {
                   const v = Number(e.target.value) || 0;
-                  const next = { ...calibration, offsetXMm: Math.max(-20, Math.min(20, v)) };
+                  const next = { ...calibration, offsetXMm: Math.max(-40, Math.min(40, v)) };
                   setCalibration(next); saveLabelCalibration(next);
                 }}
               />

@@ -15,6 +15,7 @@ export type LabelField =
   | 'numeroMontura'
   | 'fechaEntrega'
   | 'sede'
+  | 'formula'
   | 'custom';
 
 export interface LabelElement {

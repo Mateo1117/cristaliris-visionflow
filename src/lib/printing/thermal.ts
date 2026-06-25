@@ -199,6 +199,7 @@ export interface LabelData {
   numeroMontura?: string;
   fechaEntrega?: string | Date;
   sede?: string;
+  formula?: string;
 }
 
 const svgToPngDataUrl = (svg: string, sizePx: number): Promise<string> =>

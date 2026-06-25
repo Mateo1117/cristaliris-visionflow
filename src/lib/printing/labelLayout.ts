@@ -46,6 +46,7 @@ export const FIELD_LABELS: Record<LabelField, string> = {
   numeroMontura: 'Nº montura',
   fechaEntrega: 'Fecha entrega',
   sede: 'Sede',
+  formula: 'Fórmula',
   custom: 'Texto fijo',
 };
 
@@ -58,6 +59,7 @@ export const SAMPLE_VALUES: Record<LabelField, string> = {
   numeroMontura: 'M-123',
   fechaEntrega: '15/06/26',
   sede: 'Sede Centro',
+  formula: 'OD -1.00 -0.50 x90 / OI -1.25 -0.75 x85',
   custom: 'Texto',
 };
 

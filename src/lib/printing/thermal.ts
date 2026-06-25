@@ -237,6 +237,7 @@ const fieldValue = (field: LabelField, data: LabelData, customText?: string): st
         return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit' });
       } catch { return ''; }
     case 'sede':          return data.sede || '';
+    case 'formula':       return data.formula || '';
     case 'custom':        return customText || '';
     default:              return '';
   }

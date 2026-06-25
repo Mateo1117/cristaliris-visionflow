@@ -212,7 +212,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   };
 
   const buildFormulaText = async (): Promise<string | undefined> => {
-    if (!item?.paciente_id) return undefined;
+    if (!(item as any)?.paciente_id) return undefined;
     const { data } = await supabase
       .from('historias_clinicas')
       .select('formula_od_esfera, formula_od_cilindro, formula_od_eje, formula_od_adicion, formula_oi_esfera, formula_oi_cilindro, formula_oi_eje, formula_oi_adicion')

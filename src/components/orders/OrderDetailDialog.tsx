@@ -205,9 +205,31 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
 
   const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
 
-  const printLabel = () => {
+  const fmtNum = (n: number | null | undefined) => {
+    if (n === null || n === undefined) return '';
+    const s = (n >= 0 ? '+' : '') + Number(n).toFixed(2);
+    return s;
+  };
+
+  const buildFormulaText = async (): Promise<string | undefined> => {
+    if (!item?.paciente_id) return undefined;
+    const { data } = await supabase
+      .from('historias_clinicas')
+      .select('formula_od_esfera, formula_od_cilindro, formula_od_eje, formula_od_adicion, formula_oi_esfera, formula_oi_cilindro, formula_oi_eje, formula_oi_adicion')
+      .eq('paciente_id', (item as any).paciente_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data) return undefined;
+    const od = `OD ${fmtNum(data.formula_od_esfera)} ${fmtNum(data.formula_od_cilindro)} x${data.formula_od_eje ?? '—'}${data.formula_od_adicion ? ` Add ${fmtNum(data.formula_od_adicion)}` : ''}`.trim();
+    const oi = `OI ${fmtNum(data.formula_oi_esfera)} ${fmtNum(data.formula_oi_cilindro)} x${data.formula_oi_eje ?? '—'}${data.formula_oi_adicion ? ` Add ${fmtNum(data.formula_oi_adicion)}` : ''}`.trim();
+    return `${od} / ${oi}`;
+  };
+
+  const printLabel = async () => {
     const svg = document.getElementById('qr-print-area');
     if (!svg || !item) return;
+    const formula = await buildFormulaText();
     printThermalLabel({
       numero: numeroOrdenLabel || '',
       qrSvg: svg.outerHTML,
@@ -218,6 +240,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
       numeroMontura: item.numero_montura || undefined,
       fechaEntrega: (item as any).fecha_entrega_prometida || undefined,
       sede: (item as any).sede_nombre || undefined,
+      formula,
     });
   };
 

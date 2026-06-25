@@ -27,7 +27,7 @@ interface Props {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-const TEXT_FIELDS: LabelField[] = ['numero', 'paciente', 'descripcion', 'laboratorio', 'numeroMontura', 'fechaEntrega', 'sede', 'custom'];
+const TEXT_FIELDS: LabelField[] = ['numero', 'paciente', 'descripcion', 'laboratorio', 'numeroMontura', 'fechaEntrega', 'sede', 'formula', 'custom'];
 
 export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
   const PX = LABEL_PX_PER_MM * Math.min(2, Math.max(0.8, 30 / widthMm));

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Bell, AlertTriangle, Clock, Check, Factory } from 'lucide-react';
+import { Bell, AlertTriangle, Clock, Check, Factory, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -10,7 +10,11 @@ import { useNavigate } from 'react-router-dom';
 
 interface NotifItem {
   id: string;
-  type: 'alerta_produccion' | 'delayed' | 'low_stock';
+  /**
+   * `garantia_reincidente`: el producto acumula más de una garantía; la inserta
+   * el módulo de Garantías en la tabla `notificaciones`.
+   */
+  type: 'alerta_produccion' | 'delayed' | 'low_stock' | 'garantia_reincidente';
   title: string;
   detail: string;
   leida: boolean;
@@ -102,22 +106,27 @@ export function NotificationBell() {
     markAsRead(alert.id);
     setOpen(false);
     if (alert.type === 'low_stock') navigate('/inventario');
+    else if (alert.type === 'garantia_reincidente') navigate('/garantias');
     else navigate('/ordenes');
   };
 
   const iconForType = (type: NotifItem['type']) => {
     switch (type) {
       case 'alerta_produccion': return <Factory className="h-4 w-4 text-destructive mt-0.5 shrink-0" />;
+      case 'garantia_reincidente': return <ShieldAlert className="h-4 w-4 text-destructive mt-0.5 shrink-0" />;
       case 'delayed': return <Clock className="h-4 w-4 text-destructive mt-0.5 shrink-0" />;
       case 'low_stock': return <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />;
+      default: return <Bell className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />;
     }
   };
 
   const labelForType = (type: NotifItem['type']) => {
     switch (type) {
       case 'alerta_produccion': return 'Lab retrasado';
+      case 'garantia_reincidente': return 'Garantía reincidente';
       case 'delayed': return 'Demorado';
       case 'low_stock': return 'Stock bajo';
+      default: return 'Alerta';
     }
   };
 
@@ -160,7 +169,12 @@ export function NotificationBell() {
                   <p className="text-sm font-medium truncate">{a.title}</p>
                   <p className="text-xs text-muted-foreground line-clamp-2">{a.detail}</p>
                 </div>
-                <Badge variant="outline" className="text-[9px] shrink-0 mt-0.5">
+                <Badge
+                  variant="outline"
+                  className={`text-[9px] shrink-0 mt-0.5 ${
+                    a.type === 'garantia_reincidente' ? 'border-destructive/50 text-destructive' : ''
+                  }`}
+                >
                   {labelForType(a.type)}
                 </Badge>
               </button>

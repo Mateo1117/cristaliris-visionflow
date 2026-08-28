@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Variables de entorno (no deben versionarse)
+.env
+.env.local
+.env.*.local
+
+# Configuración local de herramientas
+.claude/

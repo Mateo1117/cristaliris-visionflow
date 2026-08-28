@@ -18,6 +18,8 @@ import { printReceiptUSB, printLabelUSB, pickUsbPrinter } from '@/lib/printing/e
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { usePermissions } from '@/hooks/usePermissions';
+import { esEstadoLaboratorio, sellosDeFecha } from '@/lib/businessDays';
 
 interface Props {
   item: OrdenProducto | null;
@@ -27,7 +29,12 @@ interface Props {
 
 export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
+  const { isAdmin } = usePermissions();
   const [uploading, setUploading] = useState(false);
+
+  // Retroceso de estado (solo administrador, con justificación obligatoria)
+  const [showRetroceso, setShowRetroceso] = useState(false);
+  const [justificacion, setJustificacion] = useState('');
 
   // Editable order data
   const [editingOrder, setEditingOrder] = useState(false);
@@ -35,12 +42,41 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     tipo_producto: 'lente' as 'lente' | 'montura' | 'insumo',
     descripcion: '',
     laboratorio_id: null as string | null,
+    numero_orden_laboratorio: '',
     numero_montura: '',
     tipo_lente_tiempo: '',
     es_garantia: false,
     es_reproceso: false,
     observaciones: '',
   });
+
+  /**
+   * Datos FRESCOS del producto desde la base de datos.
+   *
+   * El prop `item` es una copia tomada al abrir el diálogo; tras editar (por
+   * ejemplo, cambiar el laboratorio) esa copia queda desactualizada y la
+   * etiqueta se imprimía con los valores anteriores. Esta consulta se invalida
+   * con cada guardado, de modo que lo que se ve y lo que se imprime siempre es
+   * lo que está guardado.
+   */
+  const { data: detalle } = useQuery({
+    queryKey: ['orden-producto-detalle', item?.id],
+    queryFn: async () => {
+      if (!item) return null;
+      const { data, error } = await supabase
+        .from('orden_productos')
+        .select('*, laboratorios(nombre), ordenes(numero_orden, paciente_id, pacientes(nombres, apellidos), sedes(nombre))')
+        .eq('id', item.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    enabled: !!item && open,
+  });
+
+  /** Valor efectivo de un campo: primero lo guardado, luego la copia inicial. */
+  const campo = <T,>(deLaBase: T | null | undefined, delItem: T | null | undefined): T | undefined =>
+    (deLaBase ?? delItem ?? undefined) as T | undefined;
 
   const { data: laboratorios = [] } = useQuery({
     queryKey: ['laboratorios-edit'],
@@ -53,14 +89,16 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
 
   const startEditOrder = async () => {
     if (!item) return;
-    const { data } = await supabase.from('orden_productos')
-      .select('tipo_producto, descripcion, laboratorio_id, numero_montura, tipo_lente_tiempo, es_garantia, es_reproceso, observaciones')
+    const { data, error } = await supabase.from('orden_productos')
+      .select('tipo_producto, descripcion, laboratorio_id, numero_orden_laboratorio, numero_montura, tipo_lente_tiempo, es_garantia, es_reproceso, observaciones')
       .eq('id', item.id).single();
+    if (error) { toast.error(error.message); return; }
     if (data) {
       setOrderEdit({
         tipo_producto: (data.tipo_producto as any) || 'lente',
         descripcion: data.descripcion || '',
         laboratorio_id: data.laboratorio_id,
+        numero_orden_laboratorio: (data as any).numero_orden_laboratorio || '',
         numero_montura: data.numero_montura || '',
         tipo_lente_tiempo: data.tipo_lente_tiempo || '',
         es_garantia: !!data.es_garantia,
@@ -78,6 +116,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         tipo_producto: orderEdit.tipo_producto,
         descripcion: orderEdit.descripcion,
         laboratorio_id: orderEdit.laboratorio_id,
+        numero_orden_laboratorio: orderEdit.numero_orden_laboratorio || null,
         numero_montura: orderEdit.numero_montura || null,
         tipo_lente_tiempo: orderEdit.tipo_lente_tiempo || null,
         es_garantia: orderEdit.es_garantia,
@@ -88,6 +127,8 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      // También el detalle abierto, para que lo editado se vea y se imprima ya.
+      queryClient.invalidateQueries({ queryKey: ['orden-producto-detalle', item?.id] });
       setEditingOrder(false);
       toast.success('Orden actualizada');
     },
@@ -128,6 +169,8 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      // También el detalle abierto, para que lo editado se vea y se imprima ya.
+      queryClient.invalidateQueries({ queryKey: ['orden-producto-detalle', item?.id] });
       setEditingCosts(false);
       toast.success('Costos y utilidad actualizados');
     },
@@ -139,17 +182,74 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   const prevEstado = currentIndex > 0 ? ESTADOS_PRODUCTO[currentIndex - 1] : null;
 
   const changeState = useMutation({
-    mutationFn: async ({ id, newState, oldState }: { id: string; newState: string; oldState: string }) => {
-      const { error: e1 } = await supabase.from('orden_productos').update({ estado_actual: newState as any }).eq('id', id);
+    mutationFn: async ({ id, newState, oldState, justificacion, retroceso }: { id: string; newState: string; oldState: string; justificacion?: string; retroceso?: boolean }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const ahora = new Date();
+
+      // Reproceso interno: retroceso desde control de calidad hacia el laboratorio.
+      const esReproceso = !!retroceso && oldState === 'control_calidad' && esEstadoLaboratorio(newState);
+
+      const cambios: Record<string, any> = {
+        estado_actual: newState,
+        // Sella la fecha del ciclo correspondiente al estado alcanzado.
+        ...sellosDeFecha(newState, ahora),
+      };
+      if (esReproceso) {
+        cambios.es_reproceso = true;
+        // Reinicia el conteo de tiempo de laboratorio (README 3.2).
+        cambios.fecha_envio_lab = ahora.toISOString();
+      }
+
+      const { error: e1 } = await supabase.from('orden_productos').update(cambios as any).eq('id', id);
       if (e1) throw e1;
       const { error: e2 } = await supabase.from('estados_producto').insert({
-        orden_producto_id: id, estado_anterior: oldState as any, estado_nuevo: newState as any, metodo: 'manual',
+        orden_producto_id: id,
+        estado_anterior: oldState as any,
+        estado_nuevo: newState as any,
+        metodo: retroceso ? 'admin_retroceso' : 'manual',
+        usuario_id: user?.id || null,
+        justificacion: justificacion || null,
       });
       if (e2) throw e2;
+      return { esReproceso };
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orden-productos'] }); toast.success('Estado actualizado'); },
-    onError: (e: any) => toast.error(e.message),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      // También el detalle abierto, para que lo editado se vea y se imprima ya.
+      queryClient.invalidateQueries({ queryKey: ['orden-producto-detalle', item?.id] });
+      queryClient.invalidateQueries({ queryKey: ['estado-historial', item?.id] });
+      queryClient.invalidateQueries({ queryKey: ['alertas-produccion-lab'] });
+      toast.success(res?.esReproceso ? 'Estado actualizado — marcado como reproceso interno' : 'Estado actualizado');
+    },
+    onError: (e: any) => toast.error(e.message || 'No se pudo actualizar el estado'),
   });
+
+  const handleRetroceder = () => {
+    if (!item || !prevEstado) return;
+    if (!isAdmin) {
+      toast.error('Solo un administrador puede retroceder estados');
+      return;
+    }
+    setJustificacion('');
+    setShowRetroceso(true);
+  };
+
+  const confirmarRetroceso = () => {
+    if (!item || !prevEstado) return;
+    if (justificacion.trim().length < 5) {
+      toast.error('La justificación es obligatoria');
+      return;
+    }
+    changeState.mutate({
+      id: item.id,
+      newState: prevEstado.key,
+      oldState: item.estado_actual,
+      justificacion: justificacion.trim(),
+      retroceso: true,
+    });
+    setShowRetroceso(false);
+    setJustificacion('');
+  };
 
   const { data: historial = [] } = useQuery({
     queryKey: ['estado-historial', item?.id],
@@ -174,9 +274,18 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
       if (!item) return [];
       const { data, error } = await supabase.storage.from('orden-fotos').list(item.id);
       if (error) throw error;
-      return data.map(f => ({
+      // El bucket es privado (las fotos pueden incluir soportes de pago y datos
+      // del paciente), así que se piden enlaces firmados temporales en vez de
+      // URLs públicas.
+      const rutas = data.map(f => `${item.id}/${f.name}`);
+      if (!rutas.length) return [];
+      const { data: firmados, error: errFirma } = await supabase
+        .storage.from('orden-fotos')
+        .createSignedUrls(rutas, 60 * 60); // 1 hora
+      if (errFirma) throw errFirma;
+      return data.map((f, i) => ({
         name: f.name,
-        url: supabase.storage.from('orden-fotos').getPublicUrl(`${item.id}/${f.name}`).data.publicUrl,
+        url: firmados?.[i]?.signedUrl ?? '',
       }));
     },
     enabled: !!item && open,
@@ -212,11 +321,14 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   };
 
   const buildFormulaText = async (): Promise<string | undefined> => {
-    if (!(item as any)?.paciente_id) return undefined;
+    // El id del paciente sale de la consulta de detalle; el listado no siempre
+    // lo trae, y por eso la fórmula nunca llegaba a la etiqueta.
+    const pacienteId = detalle?.ordenes?.paciente_id ?? (item as any)?.paciente_id;
+    if (!pacienteId) return undefined;
     const { data } = await supabase
       .from('historias_clinicas')
       .select('formula_od_esfera, formula_od_cilindro, formula_od_eje, formula_od_adicion, formula_oi_esfera, formula_oi_cilindro, formula_oi_eje, formula_oi_adicion')
-      .eq('paciente_id', (item as any).paciente_id)
+      .eq('paciente_id', pacienteId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -230,16 +342,30 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     const svg = document.getElementById('qr-print-area');
     if (!svg || !item) return;
     const formula = await buildFormulaText();
+    const pacienteNombre = detalle?.ordenes?.pacientes
+      ? `${detalle.ordenes.pacientes.nombres || ''} ${detalle.ordenes.pacientes.apellidos || ''}`.trim()
+      : item.paciente_nombre;
+
     printThermalLabel({
       numero: numeroOrdenLabel || '',
       qrSvg: svg.outerHTML,
       qrPayload: qrUrl,
-      paciente: item.paciente_nombre,
-      descripcion: item.descripcion,
-      laboratorio: item.laboratorio_nombre,
-      numeroMontura: item.numero_montura || undefined,
-      fechaEntrega: (item as any).fecha_entrega_prometida || undefined,
-      sede: (item as any).sede_nombre || undefined,
+      // Siempre lo guardado en la base de datos; la copia del listado es sólo
+      // el respaldo mientras la consulta de detalle carga.
+      paciente: pacienteNombre,
+      descripcion: campo(detalle?.descripcion, item.descripcion),
+      laboratorio: campo(detalle?.laboratorios?.nombre, item.laboratorio_nombre),
+      numeroOrdenLab: campo(detalle?.numero_orden_laboratorio, (item as any).numero_orden_laboratorio),
+      numeroMontura: campo(detalle?.numero_montura, item.numero_montura),
+      // Fecha impresa en la etiqueta: la de entrega prometida si existe y, en
+      // su defecto, la de creación de la orden.
+      fechaEntrega:
+        detalle?.fecha_listo_entrega ||
+        (item as any).fecha_entrega_prometida ||
+        detalle?.created_at ||
+        (item as any).created_at ||
+        new Date(),
+      sede: campo(detalle?.ordenes?.sedes?.nombre, (item as any).sede_nombre),
       formula,
     });
   };
@@ -324,15 +450,20 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
           <Badge variant="outline">{ESTADOS_PRODUCTO[currentIndex]?.label}</Badge>
           <span className={`text-xs flex items-center gap-1 ${alertLevel === 'destructive' ? 'text-destructive' : alertLevel === 'warning' ? 'text-yellow-500' : 'text-muted-foreground'}`}>
             <Clock className="h-3 w-3" />
-            {item.dias_en_estado}d / {item.tiempo_esperado_dias}d
+            {item.dias_en_estado} / {item.tiempo_esperado_dias} días hábiles
           </span>
         </div>
 
-        <div className="flex gap-2 mb-4">
-          {prevEstado && (
-            <Button size="sm" variant="outline" onClick={() => changeState.mutate({ id: item.id, newState: prevEstado.key, oldState: item.estado_actual })} disabled={changeState.isPending}>
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {prevEstado && isAdmin && (
+            <Button size="sm" variant="outline" onClick={handleRetroceder} disabled={changeState.isPending}>
               <ChevronLeft className="h-3 w-3 mr-1" />{prevEstado.label}
             </Button>
+          )}
+          {prevEstado && !isAdmin && (
+            <span className="text-[11px] text-muted-foreground self-center">
+              Solo un administrador puede retroceder estados
+            </span>
           )}
           {nextEstado && (
             <Button size="sm" onClick={() => changeState.mutate({ id: item.id, newState: nextEstado.key, oldState: item.estado_actual })} disabled={changeState.isPending}>
@@ -340,6 +471,38 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
             </Button>
           )}
         </div>
+
+        {/* Retroceso de estado — justificación obligatoria (README 3.2) */}
+        {showRetroceso && prevEstado && (
+          <Card className="border-destructive/40 mb-4">
+            <CardContent className="p-3 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                <AlertTriangle className="h-4 w-4" />
+                Retroceder a "{prevEstado.label}"
+              </div>
+              {item.estado_actual === 'control_calidad' && esEstadoLaboratorio(prevEstado.key) && (
+                <p className="text-xs text-warning">
+                  Se marcará como reproceso interno y se reiniciará el conteo de tiempo de laboratorio.
+                </p>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Justificación *</Label>
+                <Textarea
+                  rows={2}
+                  value={justificacion}
+                  onChange={(e) => setJustificacion(e.target.value)}
+                  placeholder="Explique por qué se retrocede el estado..."
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="outline" onClick={() => { setShowRetroceso(false); setJustificacion(''); }}>Cancelar</Button>
+                <Button size="sm" variant="destructive" onClick={confirmarRetroceso} disabled={changeState.isPending || justificacion.trim().length < 5}>
+                  Confirmar Retroceso
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Tabs defaultValue="detalle">
           <TabsList className="grid grid-cols-5 w-full">
@@ -368,8 +531,8 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                     <CardContent className="p-3 text-xs">
                       <AlertTriangle className={`h-4 w-4 inline mr-1 ${alertLevel === 'destructive' ? 'text-destructive' : 'text-yellow-500'}`} />
                       {alertLevel === 'destructive'
-                        ? `⚠️ Excedido: ${item.dias_en_estado - item.tiempo_esperado_dias} día(s) de retraso`
-                        : `⏳ Próximo a vencer: ${item.tiempo_esperado_dias - item.dias_en_estado} día(s) restantes`}
+                        ? `⚠️ Excedido: ${item.dias_en_estado - item.tiempo_esperado_dias} día(s) hábil(es) de retraso`
+                        : `⏳ Próximo a vencer: ${item.tiempo_esperado_dias - item.dias_en_estado} día(s) hábil(es) restantes`}
                     </CardContent>
                   </Card>
                 )}
@@ -401,6 +564,15 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">N° de orden del laboratorio</Label>
+                  <Input
+                    value={orderEdit.numero_orden_laboratorio}
+                    placeholder="El que asigna el laboratorio, ej. LAB-4821"
+                    onChange={(e) => setOrderEdit(p => ({ ...p, numero_orden_laboratorio: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Sale impreso en la etiqueta del producto.</p>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Descripción</Label>

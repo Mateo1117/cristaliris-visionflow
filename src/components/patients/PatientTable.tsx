@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreVertical, Pencil, FileText } from 'lucide-react';
 
 interface PatientTableProps {
-  searchQuery: string;
+  /** Página actual de pacientes: ya viene filtrada y paginada desde el servidor. */
   pacientes: any[];
   isLoading: boolean;
   onEdit?: (paciente: any) => void;
@@ -15,15 +15,7 @@ interface PatientTableProps {
   onViewDetail?: (paciente: any) => void;
 }
 
-export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onViewHistory, onViewDetail }: PatientTableProps) {
-  const q = searchQuery.toLowerCase();
-  const filtered = pacientes.filter((p: any) =>
-    p.numero_documento?.includes(q) ||
-    `${p.nombres} ${p.apellidos}`.toLowerCase().includes(q) ||
-    p.telefono?.includes(q) ||
-    p.referido_por?.toLowerCase().includes(q)
-  );
-
+export function PatientTable({ pacientes, isLoading, onEdit, onViewHistory, onViewDetail }: PatientTableProps) {
   if (isLoading) {
     return <Card className="p-4 space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</Card>;
   }
@@ -44,7 +36,7 @@ export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onView
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map((p: any) => (
+          {pacientes.map((p: any) => (
             <TableRow key={p.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => onViewDetail?.(p)}>
               <TableCell className="font-medium">{p.tipo_documento} {p.numero_documento}</TableCell>
               <TableCell>{p.nombres} {p.apellidos}</TableCell>
@@ -57,14 +49,16 @@ export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onView
                   {p.modalidad_pago === 'nomina' ? 'Nómina' : p.modalidad_pago === 'cuotas' ? 'Cuotas' : 'Contado'}
                 </Badge>
               </TableCell>
-              <TableCell>
+              {/* La fila abre el detalle: el menú de acciones no debe propagar el
+                  clic o cada "⋮" abriría además el diálogo del paciente. */}
+              <TableCell onClick={(e) => e.stopPropagation()}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Acciones del paciente">
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenuItem onClick={() => onEdit?.(p)}>
                       <Pencil className="h-4 w-4 mr-2" />Editar
                     </DropdownMenuItem>
@@ -76,7 +70,7 @@ export function PatientTable({ searchQuery, pacientes, isLoading, onEdit, onView
               </TableCell>
             </TableRow>
           ))}
-          {filtered.length === 0 && (
+          {pacientes.length === 0 && (
             <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No se encontraron pacientes</TableCell></TableRow>
           )}
         </TableBody>

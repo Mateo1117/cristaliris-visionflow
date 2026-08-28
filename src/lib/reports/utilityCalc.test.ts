@@ -6,6 +6,7 @@ import {
   calcularUtilidadPorLente,
   type OrdenProductoRow,
 } from './utilityCalc';
+import { calcularTotales } from '../pricing';
 
 const row = (over: Partial<OrdenProductoRow> = {}): OrdenProductoRow => ({
   tipo_producto: 'lente',
@@ -55,6 +56,46 @@ describe('calcularUtilidadFila', () => {
     // Convenio 45% sobre 200.000 → precio_venta persistido = 110.000
     const r = row({ precio_venta: 110000, costo_laboratorio: 40000 });
     expect(calcularUtilidadFila(r)).toBe(70000);
+  });
+});
+
+describe('contrato con pricing.ts (precio_venta neto)', () => {
+  it('el neto que persiste Orders/Cotizaciones es el que consumen los reportes', () => {
+    // Orden real: 2 lentes de $200.000 con convenio 50% pagando con tarjeta (→45%).
+    const t = calcularTotales({
+      items: [{ cantidad: 2, precioUnitario: 200000 }],
+      pctEmpresa: 50,
+      medioPago: 'tarjeta',
+    });
+    // Lo que se guarda en orden_productos.precio_venta:
+    const persistido = t.lineas[0].neto;
+    expect(persistido).toBe(220000);
+
+    // El reporte lee ese valor y NO vuelve a aplicar el descuento.
+    const utilidad = calcularUtilidadFila(row({ precio_venta: persistido, costo_laboratorio: 90000 }));
+    expect(utilidad).toBe(130000);
+  });
+
+  it('regresión: si se persistiera el precio bruto la utilidad se sobreestimaría', () => {
+    const bruto = calcularUtilidadFila(row({ precio_venta: 400000, costo_laboratorio: 90000 }));
+    const neto = calcularUtilidadFila(row({ precio_venta: 220000, costo_laboratorio: 90000 }));
+    expect(bruto).toBeGreaterThan(neto);
+    expect(bruto - neto).toBe(180000); // exactamente el descuento omitido
+  });
+
+  it('la cantidad va embebida en el importe: 3 unidades = una fila con el total', () => {
+    const t = calcularTotales({
+      items: [{ cantidad: 3, precioUnitario: 100000 }],
+      pctEmpresa: 0,
+      medioPago: 'efectivo',
+    });
+    const [agg] = agregarProductos([
+      row({ precio_venta: t.lineas[0].neto, costo_laboratorio: 60000, productos_catalogo: { nombre: 'Monofocal', categoria: 'monofocal' } }),
+    ]);
+    expect(agg.ingreso).toBe(300000); // importe correcto para las 3 unidades
+    // LIMITACIÓN: `orden_productos` no tiene columna `cantidad`, así que el reporte
+    // cuenta 1 (la línea) y no 3 (las unidades físicas).
+    expect(agg.cantidad).toBe(1);
   });
 });
 

@@ -6,25 +6,18 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
 import { OrderDetailDialog } from './OrderDetailDialog';
-import { ESTADOS_PRODUCTO } from '@/types';
+import { ESTADOS_PRODUCTO, colorEstadoProducto } from '@/types';
 import type { OrdenProducto } from '@/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Search, Filter, ArrowUpDown, Clock, AlertTriangle, Download } from 'lucide-react';
 import { exportToCSV } from '@/lib/export-csv';
+import { diasHabilesEntre, useFestivos } from '@/lib/businessDays';
 
-const estadoColor: Record<string, string> = {
-  pedido_creado: 'bg-muted text-muted-foreground',
-  alistamiento: 'bg-accent/10 text-accent-foreground',
-  enviado_laboratorio: 'bg-primary/10 text-primary',
-  en_produccion: 'bg-warning/10 text-warning',
-  producido: 'bg-info/10 text-info',
-  recibido_optica: 'bg-secondary/10 text-secondary',
-  control_calidad: 'bg-warning/10 text-warning',
-  listo_entrega: 'bg-success/10 text-success',
-  entregado: 'bg-success/15 text-success',
-};
+// Los colores de estado viven en `@/types` (`colorEstadoProducto`), junto a la
+// lista de estados: el mapa local que había aquí no incluía «Recibido en
+// Laboratorio» ni «En Tránsito» y esas insignias salían sin color.
 
 export function OrderListView() {
   const [selectedItem, setSelectedItem] = useState<OrdenProducto | null>(null);
@@ -35,24 +28,38 @@ export function OrderListView() {
   const [sortAsc, setSortAsc] = useState(false);
   const queryClient = useQueryClient();
 
+  const { festivos } = useFestivos();
+
   const { data: productos = [], isLoading } = useQuery({
-    queryKey: ['orden-productos'],
+    // Clave propia: comparte tabla con el Kanban pero devuelve otro conjunto de
+    // campos, así que no deben compartir caché.
+    queryKey: ['orden-productos', 'lista', festivos],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orden_productos')
-        .select('*, laboratorios(nombre, tiempo_promedio_entrega), ordenes(pacientes(nombres, apellidos))')
+        .select('*, laboratorios(nombre, tiempo_promedio_entrega), ordenes(numero_orden, paciente_id, pacientes(nombres, apellidos), sedes(nombre))')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data.map((p: any) => ({
         id: p.id,
         orden_id: p.orden_id,
+        numero_orden: p.ordenes?.numero_orden || null,
+        numero_montura: p.numero_montura || null,
+        medidas_progresivo: p.medidas_progresivo || null,
         paciente_nombre: `${p.ordenes?.pacientes?.nombres || ''} ${p.ordenes?.pacientes?.apellidos || ''}`.trim(),
+        paciente_id: p.ordenes?.paciente_id || null,
+        sede_nombre: p.ordenes?.sedes?.nombre || null,
+        numero_orden_laboratorio: p.numero_orden_laboratorio || null,
+        fecha_entrega_prometida: p.fecha_listo_entrega || null,
         tipo_producto: p.tipo_producto,
+        tipo_lente_tiempo: p.tipo_lente_tiempo,
         descripcion: p.descripcion,
         laboratorio_nombre: p.laboratorios?.nombre || 'N/A',
         estado_actual: p.estado_actual,
         fecha_creacion: p.created_at,
-        dias_en_estado: Math.max(0, Math.floor((Date.now() - new Date(p.updated_at).getTime()) / 86400000)),
+        created_at: p.created_at,
+        // Días HÁBILES, igual que en el Kanban (antes aquí eran calendario).
+        dias_en_estado: Math.max(0, diasHabilesEntre(p.updated_at, new Date(), festivos)),
         tiempo_esperado_dias: p.laboratorios?.tiempo_promedio_entrega || 3,
         es_garantia: p.es_garantia || false,
         es_reproceso: p.es_reproceso || false,
@@ -207,7 +214,7 @@ export function OrderListView() {
                   <TableCell><Badge variant="outline" className="text-[10px]">{p.tipo_producto}</Badge></TableCell>
                   <TableCell className="text-sm">{p.laboratorio_nombre}</TableCell>
                   <TableCell>
-                    <Badge className={`text-[10px] ${estadoColor[p.estado_actual] || ''}`}>
+                    <Badge className={`text-[10px] ${colorEstadoProducto(p.estado_actual)}`}>
                       {estadoLabel}
                     </Badge>
                     {p.es_garantia && <Badge variant="destructive" className="text-[9px] ml-1">Garantía</Badge>}

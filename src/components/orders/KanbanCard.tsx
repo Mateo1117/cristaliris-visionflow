@@ -1,11 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import type { OrdenProducto } from '@/types';
+import { colorEstadoProducto, etiquetaEstadoProducto, type OrdenProducto } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Clock, AlertTriangle, ShieldCheck, RotateCcw, Camera, QrCode } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
+/**
+ * Semáforo de tiempos (README 3.3): verde dentro del tiempo esperado, amarillo
+ * al 80% y rojo al alcanzarlo o excederlo. Se mide en días HÁBILES.
+ *
+ * Si no hay tiempo esperado configurado (0 o inválido) no se puede semaforizar:
+ * se muestra en gris en vez de pintar la tarjeta de rojo por una división
+ * entre cero.
+ */
 function getTimeColor(dias: number, esperado: number) {
+  if (!Number.isFinite(esperado) || esperado <= 0) return 'text-muted-foreground';
   const ratio = dias / esperado;
   if (ratio >= 1) return 'text-destructive';
   if (ratio >= 0.8) return 'text-warning';
@@ -13,9 +22,14 @@ function getTimeColor(dias: number, esperado: number) {
 }
 
 export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: () => void }) {
+  const tieneTiempoEsperado = Number.isFinite(item.tiempo_esperado_dias) && item.tiempo_esperado_dias > 0;
   const timeColor = getTimeColor(item.dias_en_estado, item.tiempo_esperado_dias);
-  const excedido = item.dias_en_estado >= item.tiempo_esperado_dias;
+  const excedido = tieneTiempoEsperado && item.dias_en_estado >= item.tiempo_esperado_dias;
   const isPedidoCreado = item.estado_actual === 'pedido_creado';
+  // Etiqueta y color del estado actual: cubren los 11 estados del flujo,
+  // incluidos "Recibido en Laboratorio" y "En Tránsito".
+  const estadoLabel = etiquetaEstadoProducto(item.estado_actual);
+  const estadoColor = colorEstadoProducto(item.estado_actual);
 
   // Check if photos exist for pedido_creado cards
   const { data: fotoCount = 0 } = useQuery({
@@ -64,12 +78,35 @@ export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: ()
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <Badge variant="outline" className="text-[10px] h-5">{item.laboratorio_nombre}</Badge>
-          <div className={`flex items-center gap-1 text-[10px] font-medium ${timeColor}`}>
+        <div className="flex items-center justify-between gap-1">
+          <Badge
+            variant="outline"
+            className={`text-[10px] h-5 max-w-[58%] truncate ${estadoColor}`}
+            title={`Estado: ${estadoLabel}`}
+          >
+            {estadoLabel}
+          </Badge>
+          <Badge variant="outline" className="text-[10px] h-5 max-w-[40%] truncate" title={item.laboratorio_nombre}>
+            {item.laboratorio_nombre}
+          </Badge>
+        </div>
+
+        <div className="flex items-center justify-end mt-1.5">
+          <div
+            className={`flex items-center gap-1 text-[10px] font-medium ${timeColor}`}
+            title={
+              tieneTiempoEsperado
+                ? `${item.dias_en_estado} de ${item.tiempo_esperado_dias} días hábiles en este estado`
+                : `${item.dias_en_estado} días hábiles en este estado (sin tiempo esperado configurado)`
+            }
+          >
             {excedido && <AlertTriangle className="h-3 w-3" />}
             <Clock className="h-3 w-3" />
-            <span>{item.dias_en_estado}d / {item.tiempo_esperado_dias}d</span>
+            <span>
+              {tieneTiempoEsperado
+                ? `${item.dias_en_estado} / ${item.tiempo_esperado_dias} d. hábiles`
+                : `${item.dias_en_estado} d. hábiles`}
+            </span>
           </div>
         </div>
       </CardContent>

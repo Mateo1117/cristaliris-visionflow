@@ -15,11 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-const horas = Array.from({ length: 20 }, (_, i) => {
-  const h = Math.floor(i / 2) + 8;
-  const m = i % 2 === 0 ? '00' : '20';
-  return `${h.toString().padStart(2, '0')}:${m}`;
-}).filter(h => parseInt(h.split(':')[0]) < 18);
+import { aHoraCorta, construirHoras, hoyEnColombia, sumarDias } from '@/lib/agendaGrid';
 
 const estadoColor: Record<string, string> = {
   agendada: 'bg-info/20 text-info border-info/30',
@@ -34,7 +30,7 @@ const estadoLabel: Record<string, string> = {
 };
 
 export default function Agenda() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = hoyEnColombia();
   const [fecha, setFecha] = useState(today);
   const [showForm, setShowForm] = useState(false);
   const [selectedPaciente, setSelectedPaciente] = useState('');
@@ -105,14 +101,14 @@ export default function Agenda() {
     createCita.mutate(data);
   };
 
-  const changeDate = (days: number) => {
-    const d = new Date(fecha);
-    d.setDate(d.getDate() + days);
-    setFecha(d.toISOString().split('T')[0]);
-  };
+  const changeDate = (days: number) => setFecha(sumarDias(fecha, days));
 
   const optNames = [...new Set(citas.map((c: any) => (c as any).profiles?.nombre || 'Sin asignar'))];
   if (optNames.length === 0) optNames.push('Sin asignar');
+
+  // La grilla incluye las franjas fijas y, además, las horas exactas de las
+  // citas del día, para que ninguna quede invisible.
+  const horas = construirHoras(citas as Array<{ hora_inicio?: string | null }>);
 
   return (
     <AppLayout>
@@ -144,7 +140,9 @@ export default function Agenda() {
                 <CardContent className="p-0">
                   <div className="divide-y">
                     {horas.map((hora) => {
-                      const cita = citas.find((c: any) => c.hora_inicio === hora + ':00' && ((c as any).profiles?.nombre || 'Sin asignar') === opt);
+                      const cita = citas.find((c: any) =>
+                        aHoraCorta(c.hora_inicio) === hora &&
+                        ((c as any).profiles?.nombre || 'Sin asignar') === opt);
                       return (
                         <div key={hora} className="flex items-center px-4 py-2 min-h-[3rem]">
                           <span className="text-xs text-muted-foreground w-12 flex-shrink-0">{hora}</span>

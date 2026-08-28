@@ -8,7 +8,19 @@ export interface Sede {
   estado_activa: boolean;
 }
 
-export type RolUsuario = 'administrador' | 'optometra' | 'asesor_comercial' | 'auxiliar_optica' | 'mensajero' | 'contador' | 'visualizador';
+// Roles del sistema. DEBE coincidir exactamente con el enum `app_role` de la BD
+// (ver supabase/migrations y src/integrations/supabase/types.ts).
+export type AppRole =
+  | 'admin'
+  | 'optometra'
+  | 'asesor_comercial'
+  | 'auxiliar_optica'
+  | 'mensajero'
+  | 'contador'
+  | 'visualizador';
+
+/** @deprecated Usa `AppRole`. Se mantiene como alias por compatibilidad. */
+export type RolUsuario = AppRole;
 
 export interface Usuario {
   id: string;
@@ -81,17 +93,47 @@ export type EstadoProducto =
   | 'listo_entrega'
   | 'entregado';
 
-export const ESTADOS_PRODUCTO: { key: EstadoProducto; label: string }[] = [
-  { key: 'pedido_creado', label: 'Pedido Creado' },
-  { key: 'alistamiento', label: 'Alistamiento' },
-  { key: 'enviado_laboratorio', label: 'Envío a Laboratorio' },
-  { key: 'en_produccion', label: 'Producción' },
-  { key: 'producido', label: 'Producido' },
-  { key: 'recibido_optica', label: 'Recibido en Óptica' },
-  { key: 'control_calidad', label: 'Control de Calidad' },
-  { key: 'listo_entrega', label: 'Listo para Entrega' },
-  { key: 'entregado', label: 'Entregado' },
+/**
+ * Estados del flujo de producto (README 3.2), en ORDEN de avance.
+ *
+ * Debe contener los 11 valores del enum `estado_producto` de la BD y respetar
+ * el mismo orden que `ORDEN_FLUJO_ESTADOS` (src/lib/businessDays.ts): esta
+ * lista es la que dibuja las columnas del Kanban y alimenta los selectores de
+ * ScanQR, así que un estado ausente aquí hace DESAPARECER del tablero a los
+ * productos que estén en él (y no se puede avanzar por QR).
+ *
+ * `alistamiento` no aparece en el README pero sí en el enum y en el código, y
+ * ocurre entre la creación del pedido y el envío al laboratorio.
+ *
+ * `color` son clases de Tailwind (tokens semánticos del tema) para las
+ * insignias de estado; la intensidad crece a medida que avanza el flujo.
+ */
+export const ESTADOS_PRODUCTO: { key: EstadoProducto; label: string; color: string }[] = [
+  { key: 'pedido_creado', label: 'Pedido Creado', color: 'bg-muted text-muted-foreground border-muted-foreground/30' },
+  { key: 'alistamiento', label: 'Alistamiento', color: 'bg-secondary text-secondary-foreground border-border' },
+  { key: 'enviado_laboratorio', label: 'Envío a Laboratorio', color: 'bg-info/15 text-info border-info/30' },
+  { key: 'recibido_laboratorio', label: 'Recibido en Laboratorio', color: 'bg-info/25 text-info border-info/40' },
+  { key: 'en_produccion', label: 'Producción', color: 'bg-warning/15 text-warning border-warning/30' },
+  { key: 'producido', label: 'Producido', color: 'bg-warning/25 text-warning border-warning/40' },
+  { key: 'en_transito', label: 'En Tránsito', color: 'bg-primary/15 text-primary border-primary/30' },
+  { key: 'recibido_optica', label: 'Recibido en Óptica', color: 'bg-primary/25 text-primary border-primary/40' },
+  { key: 'control_calidad', label: 'Control de Calidad', color: 'bg-accent text-accent-foreground border-border' },
+  { key: 'listo_entrega', label: 'Listo para Entrega', color: 'bg-success/15 text-success border-success/30' },
+  { key: 'entregado', label: 'Entregado', color: 'bg-success/30 text-success border-success/50' },
 ];
+
+/** Etiqueta en español del estado (o el propio código legible si no existe). */
+export function etiquetaEstadoProducto(estado: string): string {
+  return ESTADOS_PRODUCTO.find((e) => e.key === estado)?.label ?? estado.replace(/_/g, ' ');
+}
+
+/** Clases de color de la insignia del estado. */
+export function colorEstadoProducto(estado: string): string {
+  return (
+    ESTADOS_PRODUCTO.find((e) => e.key === estado)?.color ??
+    'bg-muted text-muted-foreground border-muted-foreground/30'
+  );
+}
 
 export interface OrdenProducto {
   id: string;

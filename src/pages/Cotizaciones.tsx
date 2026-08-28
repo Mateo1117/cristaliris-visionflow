@@ -15,8 +15,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-
-const DESCUENTO_MONTURA_PROPIA = 90000;
+import {
+  MEDIOS_PAGO,
+  DESCUENTO_MONTURA_PROPIA,
+  calcularTotales,
+  descuentoEfectivo,
+  reglaMedioPago,
+} from '@/lib/pricing';
 
 interface CotizacionItem {
   producto_catalogo_id?: string | null;
@@ -50,6 +55,8 @@ export default function Cotizaciones() {
   const [selectedPaciente, setSelectedPaciente] = useState('');
   const [items, setItems] = useState<CotizacionItem[]>([nuevoItem()]);
   const [monturaPropia, setMonturaPropia] = useState(false);
+  const [medioPago, setMedioPago] = useState('efectivo');
+  const [medioPagoConvert, setMedioPagoConvert] = useState('efectivo');
   const queryClient = useQueryClient();
 
   const { data: cotizaciones = [], isLoading } = useQuery({
@@ -115,11 +122,15 @@ export default function Cotizaciones() {
   const pacienteSel = pacientes.find((p: any) => p.id === selectedPaciente);
   const descuentoConvenio: number = (pacienteSel?.empresas?.porcentaje_descuento as number) || 0;
 
-  // Cuando cambia el paciente, ajustar descuento por defecto a sus items con descuento aplicable
+  // Descuento efectivo = convenio menos 5 puntos si el medio de pago previsto es
+  // tarjeta / Addi / Sistecrédito / link de pago (README 6.1).
+  const pctEfectivo = descuentoEfectivo(descuentoConvenio, medioPago);
+  const reglaPago = reglaMedioPago(medioPago);
+
+  // Al cambiar el paciente o el medio de pago se recalcula el % de cada ítem.
   useEffect(() => {
-    setItems((prev) => prev.map((it) => it.aplica_descuento ? { ...it, descuento_porcentaje: descuentoConvenio } : { ...it, descuento_porcentaje: 0 }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [descuentoConvenio]);
+    setItems((prev) => prev.map((it) => it.aplica_descuento ? { ...it, descuento_porcentaje: pctEfectivo } : { ...it, descuento_porcentaje: 0 }));
+  }, [pctEfectivo]);
 
   // Metrics
   const totalCotizaciones = cotizaciones.length;
@@ -128,7 +139,7 @@ export default function Cotizaciones() {
   const tasaCierre = totalCotizaciones > 0 ? ((convertidas / totalCotizaciones) * 100).toFixed(1) : '0.0';
   const totalEstimado = cotizaciones.filter((c: any) => c.estado === 'vigente').reduce((s: number, c: any) => s + (c.total_estimado || 0), 0);
 
-  const addItem = () => setItems([...items, nuevoItem(descuentoConvenio)]);
+  const addItem = () => setItems([...items, nuevoItem(pctEfectivo)]);
   const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
   const updateItem = (i: number, patch: Partial<CotizacionItem>) => {
     const updated = [...items];
@@ -138,7 +149,7 @@ export default function Cotizaciones() {
 
   const handleProductoChange = (index: number, productoId: string) => {
     if (productoId === 'free') {
-      updateItem(index, { producto_catalogo_id: null, descripcion: '', categoria: '', precio_unitario: 0, aplica_descuento: true, descuento_porcentaje: descuentoConvenio });
+      updateItem(index, { producto_catalogo_id: null, descripcion: '', categoria: '', precio_unitario: 0, aplica_descuento: true, descuento_porcentaje: pctEfectivo });
       return;
     }
     const prod = productos.find((p: any) => p.id === productoId);
@@ -151,7 +162,7 @@ export default function Cotizaciones() {
       precio_unitario: Number(prod.precio_full) || 0,
       tipo_producto: tipo,
       aplica_descuento: !!prod.aplica_descuento,
-      descuento_porcentaje: prod.aplica_descuento ? descuentoConvenio : 0,
+      descuento_porcentaje: prod.aplica_descuento ? pctEfectivo : 0,
     });
   };
 
@@ -175,29 +186,48 @@ export default function Cotizaciones() {
     }
   };
 
-  const totales = useMemo(() => {
-    const subtotal = items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
-    const descuento = items.reduce((s, it) => {
-      const lineSub = it.cantidad * it.precio_unitario;
-      const pct = it.aplica_descuento ? (it.descuento_porcentaje || 0) : 0;
-      return s + lineSub * (pct / 100);
-    }, 0);
-    const descMontura = monturaPropia ? DESCUENTO_MONTURA_PROPIA : 0;
-    const total = Math.max(0, subtotal - descuento - descMontura);
-    return { subtotal, descuento, descMontura, total };
-  }, [items, monturaPropia]);
+  /** Totales calculados con la lógica financiera central (`pricing.ts`). */
+  const totalesDe = (
+    lista: CotizacionItem[],
+    pctEmpresa: number,
+    medio: string,
+    conMonturaPropia: boolean,
+  ) =>
+    calcularTotales({
+      items: lista.map((it) => ({
+        cantidad: it.cantidad || 1,
+        precioUnitario: it.precio_unitario || 0,
+        aplicaDescuento: it.aplica_descuento,
+        descuentoPorcentaje: it.descuento_porcentaje,
+      })),
+      pctEmpresa,
+      medioPago: medio,
+      descuentoAdicional: conMonturaPropia ? DESCUENTO_MONTURA_PROPIA : 0,
+    });
+
+  const totales = useMemo(
+    () => totalesDe(items, descuentoConvenio, medioPago, monturaPropia),
+    [items, monturaPropia, descuentoConvenio, medioPago],
+  );
 
   const resetForm = () => {
     setSelectedPaciente('');
     setItems([nuevoItem()]);
     setMonturaPropia(false);
+    setMedioPago('efectivo');
   };
 
   const createCotizacion = useMutation({
-    mutationFn: async (data: { paciente_id: string; items: CotizacionItem[]; total_estimado: number; fecha_vencimiento?: string; montura_propia: boolean }) => {
+    mutationFn: async (data: { paciente_id: string; items: CotizacionItem[]; total_estimado: number; fecha_vencimiento?: string; montura_propia: boolean; medio_pago: string }) => {
       const payload: any = {
         paciente_id: data.paciente_id,
-        items: { lineas: data.items, montura_propia: data.montura_propia, descuento_montura_propia: data.montura_propia ? DESCUENTO_MONTURA_PROPIA : 0 } as any,
+        items: {
+          lineas: data.items,
+          montura_propia: data.montura_propia,
+          descuento_montura_propia: data.montura_propia ? DESCUENTO_MONTURA_PROPIA : 0,
+          // Medio de pago previsto: define el descuento efectivo y el recargo del 9%.
+          medio_pago: data.medio_pago,
+        } as any,
         total_estimado: data.total_estimado,
         fecha_vencimiento: data.fecha_vencimiento || null,
       };
@@ -214,55 +244,60 @@ export default function Cotizaciones() {
   });
 
   // Helper para normalizar items (formato viejo y nuevo)
-  const parseItems = (raw: any): { lineas: CotizacionItem[]; montura_propia: boolean; descuento_montura_propia: number } => {
-    if (!raw) return { lineas: [], montura_propia: false, descuento_montura_propia: 0 };
+  const parseItems = (raw: any): { lineas: CotizacionItem[]; montura_propia: boolean; descuento_montura_propia: number; medio_pago: string } => {
+    if (!raw) return { lineas: [], montura_propia: false, descuento_montura_propia: 0, medio_pago: 'efectivo' };
     if (Array.isArray(raw)) {
-      return { lineas: raw as CotizacionItem[], montura_propia: false, descuento_montura_propia: 0 };
+      return { lineas: raw as CotizacionItem[], montura_propia: false, descuento_montura_propia: 0, medio_pago: 'efectivo' };
     }
     return {
       lineas: (raw.lineas || []) as CotizacionItem[],
       montura_propia: !!raw.montura_propia,
       descuento_montura_propia: Number(raw.descuento_montura_propia) || 0,
+      medio_pago: raw.medio_pago || 'efectivo',
     };
   };
 
   const convertirAOrden = useMutation({
-    mutationFn: async (cotizacion: any) => {
-      const { lineas, montura_propia, descuento_montura_propia } = parseItems(cotizacion.items);
+    mutationFn: async ({ cotizacion, medio }: { cotizacion: any; medio: string }) => {
+      const { lineas, montura_propia } = parseItems(cotizacion.items);
+      const pctEmpresa = Number(cotizacion.pacientes?.empresas?.porcentaje_descuento) || 0;
 
-      const subtotal = lineas.reduce((s, it) => s + (it.cantidad || 1) * (it.precio_unitario || 0), 0);
-      const descuento = lineas.reduce((s, it) => {
-        const ls = (it.cantidad || 1) * (it.precio_unitario || 0);
-        const pct = it.aplica_descuento ? (it.descuento_porcentaje || 0) : 0;
-        return s + ls * (pct / 100);
-      }, 0);
-      const totalFinal = Math.max(0, subtotal - descuento - descuento_montura_propia);
+      // Se recalcula todo con la lógica central: el medio de pago elegido en la
+      // conversión define el descuento efectivo (-5 puntos) y el recargo del 9%.
+      const t = totalesDe(lineas, pctEmpresa, medio, montura_propia);
 
       const { data: orden, error: oe } = await supabase.from('ordenes').insert({
         paciente_id: cotizacion.paciente_id,
         empresa_id: cotizacion.pacientes?.empresa_id || null,
-        modalidad_pago: cotizacion.pacientes?.modalidad_pago || 'contado',
-        subtotal,
-        descuento_empresa: descuento,
-        descuento_porcentaje: cotizacion.pacientes?.empresas?.porcentaje_descuento || 0,
-        total_final: totalFinal,
-        saldo_pendiente: totalFinal,
+        modalidad_pago: medio,
+        subtotal: t.subtotal,
+        // Desglose informativo: el descuento ya viene restado en cada precio_venta,
+        // pero total_final se deriva del subtotal bruto, así que no se resta dos veces.
+        descuento_empresa: t.descuentoValor,
+        descuento_porcentaje: t.descuentoPct,
+        recargo_financiero: t.recargoFinanciero,
+        total_final: t.total,
+        saldo_pendiente: t.total,
         cotizacion_id: cotizacion.id,
         montura_propia,
-        descuento_montura_propia,
+        descuento_montura_propia: t.descuentoAdicional,
       }).select('id').single();
       if (oe) throw oe;
 
       if (lineas.length > 0) {
-        const productosOrden = lineas.map((it) => ({
+        const productosOrden = lineas.map((it, i) => ({
           orden_id: orden.id,
           tipo_producto: it.tipo_producto || 'lente',
           descripcion: it.descripcion || 'Producto de cotización',
-          precio_venta: (it.cantidad || 1) * (it.precio_unitario || 0),
+          // Precio NETO de descuentos (ver pricing.ts): los reportes de utilidad
+          // asumen que precio_venta ya viene neto.
+          // LIMITACIÓN: `orden_productos` no tiene columna `cantidad`; la cantidad
+          // queda embebida en el total de la línea.
+          precio_venta: t.lineas[i].neto,
           montura_id: it.inventario_id || null,
           producto_catalogo_id: it.producto_catalogo_id || null,
           laboratorio_id: it.laboratorio_id || null,
-          costo_montura: it.inventario_id ? (it.costo_unitario || 0) : 0,
+          costo_montura: it.inventario_id ? (it.costo_unitario || 0) * (it.cantidad || 1) : 0,
         }));
         const { error: pe } = await supabase.from('orden_productos').insert(productosOrden);
         if (pe) throw pe;
@@ -290,6 +325,7 @@ export default function Cotizaciones() {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['inventario-cotizaciones'] });
       queryClient.invalidateQueries({ queryKey: ['inventario'] });
+      queryClient.invalidateQueries({ queryKey: ['ordenes-cartera'] });
       setShowConvert(null);
       toast.success('Cotización convertida a orden exitosamente');
     },
@@ -300,9 +336,16 @@ export default function Cotizaciones() {
     const parsed = parseItems(cotizacion.items);
     setSelectedPaciente(cotizacion.paciente_id);
     setMonturaPropia(parsed.montura_propia);
+    setMedioPago(parsed.medio_pago);
     setItems(parsed.lineas.length > 0 ? parsed.lineas.map(it => ({ ...nuevoItem(), ...it })) : [nuevoItem()]);
     setShowForm(true);
     toast.info('Cotización duplicada — modifique y guarde');
+  };
+
+  /** Abre el diálogo de conversión con el medio de pago previsto en la cotización. */
+  const abrirConversion = (cotizacion: any) => {
+    setMedioPagoConvert(parseItems(cotizacion.items).medio_pago || cotizacion.pacientes?.modalidad_pago || 'efectivo');
+    setShowConvert(cotizacion);
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -316,6 +359,7 @@ export default function Cotizaciones() {
       total_estimado: totales.total,
       fecha_vencimiento: fd.get('fecha_vencimiento') as string || undefined,
       montura_propia: monturaPropia,
+      medio_pago: medioPago,
     });
   };
 
@@ -407,7 +451,7 @@ export default function Cotizaciones() {
                   <TableCell>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       {c.estado === 'vigente' && (
-                        <Button size="sm" variant="outline" onClick={() => setShowConvert(c)}>
+                        <Button size="sm" variant="outline" onClick={() => abrirConversion(c)}>
                           <ArrowRightCircle className="h-3.5 w-3.5 mr-1" />Convertir
                         </Button>
                       )}
@@ -443,12 +487,27 @@ export default function Cotizaciones() {
                   </SelectContent>
                 </Select>
                 {pacienteSel?.empresas && (
-                  <p className="text-[11px] text-success">Convenio: {pacienteSel.empresas.razon_social} — descuento {descuentoConvenio}%</p>
+                  <p className="text-[11px] text-success">
+                    Convenio: {pacienteSel.empresas.razon_social} — {descuentoConvenio}% · efectivo aplicado: {pctEfectivo}%
+                    {reglaPago.ajustaDescuento && <span className="text-warning"> (−5 pts por {reglaPago.l})</span>}
+                  </p>
                 )}
               </div>
               <div className="space-y-2">
                 <Label>Fecha Vencimiento</Label>
                 <Input name="fecha_vencimiento" type="date" />
+              </div>
+              <div className="space-y-2">
+                <Label>Medio de Pago Previsto</Label>
+                <Select value={medioPago} onValueChange={setMedioPago}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {MEDIOS_PAGO.map((m) => <SelectItem key={m.v} value={m.v}>{m.l}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Tarjeta, Addi, Sistecrédito y link de pago restan 5 puntos al descuento; tarjeta, Addi y Sistecrédito suman 9% de recargo.
+                </p>
               </div>
             </div>
 
@@ -592,11 +651,20 @@ export default function Cotizaciones() {
 
             <div className="rounded-lg p-3 bg-primary/5 border border-primary/20 space-y-1 text-sm">
               <div className="flex justify-between"><span>Subtotal</span><span>${totales.subtotal.toLocaleString('es-CO')}</span></div>
-              {totales.descuento > 0 && (
-                <div className="flex justify-between text-success"><span>Descuento convenio</span><span>− ${totales.descuento.toLocaleString('es-CO')}</span></div>
+              {totales.descuentoValor > 0 && (
+                <div className="flex justify-between text-success">
+                  <span>Descuento convenio ({totales.descuentoPct}%)</span>
+                  <span>− ${totales.descuentoValor.toLocaleString('es-CO')}</span>
+                </div>
               )}
-              {totales.descMontura > 0 && (
-                <div className="flex justify-between text-success"><span>Descuento montura propia</span><span>− ${totales.descMontura.toLocaleString('es-CO')}</span></div>
+              {totales.descuentoAdicional > 0 && (
+                <div className="flex justify-between text-success"><span>Descuento montura propia</span><span>− ${totales.descuentoAdicional.toLocaleString('es-CO')}</span></div>
+              )}
+              {totales.recargoFinanciero > 0 && (
+                <div className="flex justify-between text-warning">
+                  <span>Recargo financiero (9% · {reglaPago.l})</span>
+                  <span>+ ${totales.recargoFinanciero.toLocaleString('es-CO')}</span>
+                </div>
               )}
               <Separator className="my-1" />
               <div className="flex justify-between text-base font-bold text-primary"><span>Total</span><span>${totales.total.toLocaleString('es-CO')}</span></div>
@@ -617,15 +685,49 @@ export default function Cotizaciones() {
           {showConvert && (() => {
             const parsed = parseItems(showConvert.items);
             const itemsConInv = parsed.lineas.filter(it => it.inventario_id);
+            const pctEmpresaConv = Number(showConvert.pacientes?.empresas?.porcentaje_descuento) || 0;
+            const tConv = totalesDe(parsed.lineas, pctEmpresaConv, medioPagoConvert, parsed.montura_propia);
+            const reglaConv = reglaMedioPago(medioPagoConvert);
             return (
               <div className="space-y-4">
                 <div className="text-sm space-y-1">
                   <p>Paciente: <strong>{showConvert.pacientes?.nombres} {showConvert.pacientes?.apellidos}</strong></p>
                   {showConvert.pacientes?.empresas && (
-                    <p className="text-xs text-success">Convenio: {showConvert.pacientes.empresas.razon_social} ({showConvert.pacientes.empresas.porcentaje_descuento}%)</p>
+                    <p className="text-xs text-success">Convenio: {showConvert.pacientes.empresas.razon_social} ({pctEmpresaConv}%)</p>
                   )}
-                  <p>Total estimado: <strong>${(showConvert.total_estimado || 0).toLocaleString('es-CO')}</strong></p>
+                  <p>Total estimado en la cotización: <strong>${(showConvert.total_estimado || 0).toLocaleString('es-CO')}</strong></p>
                   {parsed.montura_propia && <p className="text-xs text-success">Incluye descuento por montura propia</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Medio de Pago de la Orden *</Label>
+                  <Select value={medioPagoConvert} onValueChange={setMedioPagoConvert}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MEDIOS_PAGO.map((m) => <SelectItem key={m.v} value={m.v}>{m.l}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="rounded-lg p-3 bg-primary/5 border border-primary/20 space-y-1 text-sm">
+                  <div className="flex justify-between"><span>Subtotal</span><span>${tConv.subtotal.toLocaleString('es-CO')}</span></div>
+                  {tConv.descuentoValor > 0 && (
+                    <div className="flex justify-between text-success">
+                      <span>Descuento convenio ({tConv.descuentoPct}%)</span>
+                      <span>− ${tConv.descuentoValor.toLocaleString('es-CO')}</span>
+                    </div>
+                  )}
+                  {tConv.descuentoAdicional > 0 && (
+                    <div className="flex justify-between text-success"><span>Montura propia</span><span>− ${tConv.descuentoAdicional.toLocaleString('es-CO')}</span></div>
+                  )}
+                  {tConv.recargoFinanciero > 0 && (
+                    <div className="flex justify-between text-warning">
+                      <span>Recargo financiero (9% · {reglaConv.l})</span>
+                      <span>+ ${tConv.recargoFinanciero.toLocaleString('es-CO')}</span>
+                    </div>
+                  )}
+                  <Separator className="my-1" />
+                  <div className="flex justify-between font-bold text-primary"><span>Total de la orden</span><span>${tConv.total.toLocaleString('es-CO')}</span></div>
                 </div>
 
                 <div className="space-y-2">
@@ -657,7 +759,7 @@ export default function Cotizaciones() {
 
                 <div className="flex justify-end gap-2 pt-2 border-t">
                   <Button variant="outline" onClick={() => setShowConvert(null)}>Cancelar</Button>
-                  <Button onClick={() => convertirAOrden.mutate(showConvert)} disabled={convertirAOrden.isPending}>
+                  <Button onClick={() => convertirAOrden.mutate({ cotizacion: showConvert, medio: medioPagoConvert })} disabled={convertirAOrden.isPending}>
                     {convertirAOrden.isPending ? 'Convirtiendo...' : 'Confirmar Conversión'}
                   </Button>
                 </div>
@@ -740,7 +842,7 @@ export default function Cotizaciones() {
                     <Copy className="h-3.5 w-3.5 mr-1" />Duplicar
                   </Button>
                   {showDetail.estado === 'vigente' && (
-                    <Button size="sm" onClick={() => { setShowConvert(showDetail); setShowDetail(null); }}>
+                    <Button size="sm" onClick={() => { abrirConversion(showDetail); setShowDetail(null); }}>
                       <ArrowRightCircle className="h-3.5 w-3.5 mr-1" />Convertir a Orden
                     </Button>
                   )}

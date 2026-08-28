@@ -15,21 +15,56 @@ import { Plus, Search, Eye, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { hoyColombia, toFechaColombia } from '@/lib/businessDays';
+import { calcularEdad } from '@/components/patients/patientUtils';
+import { printHtmlDocument } from '@/lib/printing/thermal';
 import { toast } from 'sonner';
 
-const calcularEdad = (fechaNac?: string | null) => {
-  if (!fechaNac) return null;
-  const n = new Date(fechaNac);
-  const hoy = new Date();
-  let edad = hoy.getFullYear() - n.getFullYear();
-  const m = hoy.getMonth() - n.getMonth();
-  if (m < 0 || (m === 0 && hoy.getDate() < n.getDate())) edad--;
-  return edad;
+/**
+ * Escapa un valor antes de interpolarlo en el HTML de impresión.
+ *
+ * Los datos clínicos (nombre, diagnóstico, observaciones…) los escribe el
+ * usuario y se inyectan en un documento generado con `document.write`: sin
+ * escapar, un `<script>` guardado en cualquier campo se ejecutaría al imprimir.
+ */
+const escapeHtml = (valor: unknown): string => {
+  if (valor === null || valor === undefined) return '';
+  return String(valor)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+/**
+ * Edad en años sobre la fecha civil COLOMBIANA (UTC-5).
+ *
+ * `new Date('yyyy-MM-dd')` interpreta la cadena como medianoche UTC, que en
+ * Bogotá es el día anterior: la edad cambiaba un día antes del cumpleaños.
+ */
+// La edad se calcula en un único sitio (`patientUtils`) para que la historia
+// clínica y la ficha del paciente no puedan mostrar edades distintas.
+
+/** Fecha legible en horario colombiano (evita el corrimiento de un día por UTC). */
+const formatFechaCO = (fecha?: string | null) => {
+  if (!fecha) return '—';
+  try {
+    const [a, m, d] = toFechaColombia(fecha).split('-');
+    return `${d}/${m}/${a}`;
+  } catch {
+    return '—';
+  }
 };
 
 const imprimirFormula = (h: any) => {
   const p = h.pacientes || {};
   const edad = calcularEdad(p.fecha_nacimiento);
+  /** Texto escapado; `—` cuando el campo viene vacío. */
+  const esc = (valor: unknown, vacio = '—') => {
+    if (valor === null || valor === undefined || valor === '') return vacio;
+    return escapeHtml(valor);
+  };
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fórmula Óptica</title>
 <style>
   body{font-family:Arial,sans-serif;padding:32px;color:#111;max-width:780px;margin:auto;}
@@ -45,58 +80,55 @@ const imprimirFormula = (h: any) => {
   .box{border:1px solid #cbd5e1;padding:8px 10px;border-radius:4px;}
   .box strong{display:block;font-size:11px;color:#64748b;text-transform:uppercase;margin-bottom:2px;}
   .firma{margin-top:40px;border-top:1px solid #111;width:240px;padding-top:4px;font-size:12px;text-align:center;}
-  @media print{button{display:none;}}
 </style></head><body>
 <div class="header">
   <div>
     <h1>Fórmula Óptica</h1>
-    <div class="meta">Cristal Iris — Óptica<br/>Fecha: ${new Date(h.fecha_consulta).toLocaleDateString('es-CO')}</div>
+    <div class="meta">Cristal Iris — Óptica<br/>Fecha: ${escapeHtml(formatFechaCO(h.fecha_consulta))}</div>
   </div>
-  <button onclick="window.print()" style="padding:6px 14px;cursor:pointer;">Imprimir</button>
 </div>
 
 <h2>Datos del Paciente</h2>
 <div class="grid">
-  <div class="box"><strong>Nombre</strong>${p.nombres || ''} ${p.apellidos || ''}</div>
-  <div class="box"><strong>Documento</strong>${p.tipo_documento || ''} ${p.numero_documento || ''}</div>
-  <div class="box"><strong>Edad</strong>${edad ?? '—'} años</div>
-  <div class="box"><strong>Ocupación</strong>${h.ocupacion || '—'}</div>
-  <div class="box"><strong>Teléfono</strong>${p.telefono || '—'}</div>
-  <div class="box"><strong>Email</strong>${p.email || '—'}</div>
+  <div class="box"><strong>Nombre</strong>${esc(p.nombres, '')} ${esc(p.apellidos, '')}</div>
+  <div class="box"><strong>Documento</strong>${esc(p.tipo_documento, '')} ${esc(p.numero_documento, '')}</div>
+  <div class="box"><strong>Edad</strong>${esc(edad)} años</div>
+  <div class="box"><strong>Ocupación</strong>${esc(h.ocupacion)}</div>
+  <div class="box"><strong>Teléfono</strong>${esc(p.telefono)}</div>
+  <div class="box"><strong>Email</strong>${esc(p.email)}</div>
 </div>
 
 <h2>Fórmula Final</h2>
 <table>
   <thead><tr><th></th><th>Esfera</th><th>Cilindro</th><th>Eje</th><th>Adición</th></tr></thead>
   <tbody>
-    <tr><td class="label">OD</td><td>${h.formula_od_esfera ?? '—'}</td><td>${h.formula_od_cilindro ?? '—'}</td><td>${h.formula_od_eje ?? '—'}°</td><td>${h.formula_od_adicion ?? '—'}</td></tr>
-    <tr><td class="label">OI</td><td>${h.formula_oi_esfera ?? '—'}</td><td>${h.formula_oi_cilindro ?? '—'}</td><td>${h.formula_oi_eje ?? '—'}°</td><td>${h.formula_oi_adicion ?? '—'}</td></tr>
+    <tr><td class="label">OD</td><td>${esc(h.formula_od_esfera)}</td><td>${esc(h.formula_od_cilindro)}</td><td>${esc(h.formula_od_eje)}°</td><td>${esc(h.formula_od_adicion)}</td></tr>
+    <tr><td class="label">OI</td><td>${esc(h.formula_oi_esfera)}</td><td>${esc(h.formula_oi_cilindro)}</td><td>${esc(h.formula_oi_eje)}°</td><td>${esc(h.formula_oi_adicion)}</td></tr>
   </tbody>
 </table>
 <div class="grid" style="margin-top:8px;">
-  <div class="box"><strong>DP Total</strong>${h.distancia_pupilar ?? '—'} mm</div>
-  <div class="box"><strong>DP OD / OI</strong>${h.distancia_pupilar_od ?? '—'} / ${h.distancia_pupilar_oi ?? '—'} mm</div>
-  <div class="box"><strong>Altura Pupilar OD / OI</strong>${h.altura_pupilar_od ?? '—'} / ${h.altura_pupilar_oi ?? '—'} mm</div>
-  <div class="box"><strong>Distancia al Vértice</strong>${h.distancia_vertice ?? '—'} mm</div>
+  <div class="box"><strong>DP Total</strong>${esc(h.distancia_pupilar)} mm</div>
+  <div class="box"><strong>DP OD / OI</strong>${esc(h.distancia_pupilar_od)} / ${esc(h.distancia_pupilar_oi)} mm</div>
+  <div class="box"><strong>Altura Pupilar OD / OI</strong>${esc(h.altura_pupilar_od)} / ${esc(h.altura_pupilar_oi)} mm</div>
+  <div class="box"><strong>Distancia al Vértice</strong>${esc(h.distancia_vertice)} mm</div>
 </div>
 
 <h2>Especificaciones del Lente</h2>
 <div class="grid">
-  <div class="box"><strong>Tipo de Lente</strong>${h.formula_tipo_lente || '—'}</div>
-  <div class="box"><strong>Filtros</strong>${h.formula_filtros || '—'}</div>
-  <div class="box"><strong>Forma de Uso</strong>${h.formula_forma_uso || '—'}</div>
-  <div class="box"><strong>Control</strong>${h.formula_control || '—'}</div>
+  <div class="box"><strong>Tipo de Lente</strong>${esc(h.formula_tipo_lente)}</div>
+  <div class="box"><strong>Filtros</strong>${esc(h.formula_filtros)}</div>
+  <div class="box"><strong>Forma de Uso</strong>${esc(h.formula_forma_uso)}</div>
+  <div class="box"><strong>Control</strong>${esc(h.formula_control)}</div>
 </div>
-${h.formula_observaciones ? `<div class="box" style="margin-top:10px;"><strong>Observaciones</strong>${h.formula_observaciones}</div>` : ''}
+${h.formula_observaciones ? `<div class="box" style="margin-top:10px;"><strong>Observaciones</strong>${escapeHtml(h.formula_observaciones)}</div>` : ''}
 
-${h.diagnostico ? `<h2>Diagnóstico</h2><div class="box">${h.diagnostico}${h.codigo_cie10 ? ` <em style="color:#64748b;">(CIE-10: ${h.codigo_cie10})</em>` : ''}</div>` : ''}
+${h.diagnostico ? `<h2>Diagnóstico</h2><div class="box">${escapeHtml(h.diagnostico)}${h.codigo_cie10 ? ` <em style="color:#64748b;">(CIE-10: ${escapeHtml(h.codigo_cie10)})</em>` : ''}</div>` : ''}
 
 <div class="firma">Firma Optómetra</div>
 </body></html>`;
-  const w = window.open('', '_blank', 'width=900,height=700');
-  if (!w) { toast.error('Permita las ventanas emergentes para imprimir'); return; }
-  w.document.write(html);
-  w.document.close();
+  // Impresión desde un iframe oculto: `window.open` lo bloquean los navegadores
+  // por defecto y la impresión fallaba en silencio.
+  printHtmlDocument(html, `Fórmula ${p.numero_documento || ''}`.trim());
 };
 
 export default function ClinicalRecords() {
@@ -242,7 +274,7 @@ export default function ClinicalRecords() {
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay historias clínicas{search ? ' que coincidan' : ''}</TableCell></TableRow>
             ) : filtered.map((h: any) => (
               <TableRow key={h.id} className="hover:bg-muted/50">
-                <TableCell className="text-sm cursor-pointer" onClick={() => setViewRecord(h)}>{new Date(h.fecha_consulta).toLocaleDateString('es-CO')}</TableCell>
+                <TableCell className="text-sm cursor-pointer" onClick={() => setViewRecord(h)}>{formatFechaCO(h.fecha_consulta)}</TableCell>
                 <TableCell className="font-medium cursor-pointer" onClick={() => setViewRecord(h)}>{h.pacientes?.nombres} {h.pacientes?.apellidos}</TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground truncate max-w-[200px]">{h.diagnostico || '—'}</TableCell>
                 <TableCell className="hidden lg:table-cell text-sm">{h.formula_od_esfera ?? '—'}/{h.formula_od_cilindro ?? '—'}/{h.formula_od_eje ?? '—'}</TableCell>
@@ -277,7 +309,7 @@ export default function ClinicalRecords() {
               <div className="rounded-lg bg-muted/50 p-4 space-y-1">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-lg">{viewRecord.pacientes?.nombres} {viewRecord.pacientes?.apellidos}</p>
-                  <Badge variant="outline">{new Date(viewRecord.fecha_consulta).toLocaleDateString('es-CO')}</Badge>
+                  <Badge variant="outline">{formatFechaCO(viewRecord.fecha_consulta)}</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">{viewRecord.pacientes?.tipo_documento} {viewRecord.pacientes?.numero_documento}</p>
                 <div className="flex flex-wrap gap-4 text-xs text-muted-foreground mt-1">

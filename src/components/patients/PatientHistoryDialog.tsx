@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { FileText, Eye } from 'lucide-react';
+import { formatearFechaColombia } from './patientUtils';
 
 interface PatientHistoryDialogProps {
   pacienteId: string | null;
@@ -64,7 +65,7 @@ export function PatientHistoryDialog({ pacienteId, open, onOpenChange }: Patient
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">{new Date(h.fecha_consulta).toLocaleDateString('es-CO')}</Badge>
+                      <Badge variant="outline">{formatearFechaColombia(h.fecha_consulta)}</Badge>
                       {h.codigo_cie10 && <Badge variant="secondary" className="text-[10px]">CIE-10: {h.codigo_cie10}</Badge>}
                     </div>
                   </div>

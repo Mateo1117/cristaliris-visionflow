@@ -87,14 +87,27 @@ export function QualityCheckDialog({ open, onOpenChange, onConfirm, pacienteNomb
                 }`}
                 onClick={() => handleToggle(item.id)}
               >
+                {/*
+                  El clic sobre la casilla (y sobre su <Label>) no debe burbujear
+                  al contenedor: si lo hace, el ítem se marca y se desmarca en el
+                  mismo clic y la verificación nunca cambia. El contenedor sigue
+                  siendo clicable en el resto de su superficie.
+                */}
                 <Checkbox
                   id={item.id}
                   checked={!!checked[item.id]}
                   onCheckedChange={() => handleToggle(item.id)}
+                  onClick={(e) => e.stopPropagation()}
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <Label htmlFor={item.id} className="text-sm font-medium cursor-pointer">{item.label}</Label>
+                  <Label
+                    htmlFor={item.id}
+                    className="text-sm font-medium cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {item.label}
+                  </Label>
                   <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                 </div>
               </div>

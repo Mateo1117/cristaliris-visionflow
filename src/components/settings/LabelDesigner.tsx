@@ -2,12 +2,16 @@
  * Diseñador visual de etiqueta — drag & drop sobre un canvas a escala (px/mm).
  * El estado vive en el padre (LabelLayout); este componente sólo edita.
  */
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { Plus, Trash2, Bold, AlignLeft, AlignCenter, AlignRight, QrCode, RotateCw } from 'lucide-react';
+import {
+  Plus, Trash2, Bold, AlignLeft, AlignCenter, AlignRight, QrCode, RotateCw,
+  Copy, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter, Grid3x3,
+  ArrowUp, ArrowDown,
+} from 'lucide-react';
 import {
   type LabelElement,
   type LabelField,
@@ -16,6 +20,7 @@ import {
   SAMPLE_VALUES,
   LABEL_PX_PER_MM,
   buildDefaultLayout,
+  elementHeightMm,
 } from '@/lib/printing/labelLayout';
 
 interface Props {
@@ -23,31 +28,109 @@ interface Props {
   heightMm: number;
   layout: LabelLayout;
   onChange: (l: LabelLayout) => void;
+  /**
+   * Gira la etiqueta 90°: intercambia alto y ancho y rota el diseño con ella.
+   * A diferencia de girar sólo la vista, esto cambia lo que se imprime.
+   */
+  onRotate?: () => void;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-const TEXT_FIELDS: LabelField[] = ['numero', 'paciente', 'descripcion', 'laboratorio', 'numeroMontura', 'fechaEntrega', 'sede', 'formula', 'custom'];
+const TEXT_FIELDS: LabelField[] = [
+  'optica', 'numero', 'paciente', 'descripcion', 'numeroOrdenLab',
+  'fechaEntrega', 'laboratorio', 'numeroMontura', 'sede', 'formula', 'custom',
+];
 
-export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
+export function LabelDesigner({ widthMm, heightMm, layout, onChange, onRotate }: Props) {
   const PX = LABEL_PX_PER_MM * Math.min(2, Math.max(0.8, 30 / widthMm));
   // escala adaptable: muestra al menos ~240px de ancho
   const px = Math.max(LABEL_PX_PER_MM, Math.min(20, 320 / widthMm));
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(layout.elements[0]?.id ?? null);
   const [previewRot, setPreviewRot] = useState<0 | 90 | 180 | 270>(0);
+  const [snap, setSnap] = useState(true);
   const dragRef = useRef<{ id: string; offX: number; offY: number } | null>(null);
 
   const selected = layout.elements.find(e => e.id === selectedId) || null;
+
+  /** Redondea a la cuadrícula de 0,5 mm cuando el ajuste está activo. */
+  const snapMm = useCallback(
+    (n: number) => (snap ? Math.round(n * 2) / 2 : Math.round(n * 10) / 10),
+    [snap],
+  );
 
   const update = useCallback((id: string, patch: Partial<LabelElement>) => {
     onChange({ ...layout, elements: layout.elements.map(e => e.id === id ? { ...e, ...patch } : e) });
   }, [layout, onChange]);
 
-  const remove = (id: string) => {
+  const remove = useCallback((id: string) => {
     onChange({ ...layout, elements: layout.elements.filter(e => e.id !== id) });
     if (selectedId === id) setSelectedId(null);
-  };
+  }, [layout, onChange, selectedId]);
+
+  /** Duplica el elemento seleccionado 2 mm más abajo. */
+  const duplicate = useCallback((id: string) => {
+    const el = layout.elements.find(e => e.id === id);
+    if (!el) return;
+    const copy: LabelElement = {
+      ...el,
+      id: uid(),
+      yMm: Math.min(heightMm - elementHeightMm(el), el.yMm + 2),
+    };
+    onChange({ ...layout, elements: [...layout.elements, copy] });
+    setSelectedId(copy.id);
+  }, [layout, onChange, heightMm]);
+
+  /** Centra el elemento en el eje indicado. */
+  const center = useCallback((id: string, axis: 'x' | 'y') => {
+    const el = layout.elements.find(e => e.id === id);
+    if (!el) return;
+    if (axis === 'x') update(id, { xMm: Math.round(((widthMm - el.wMm) / 2) * 10) / 10 });
+    else update(id, { yMm: Math.round(((heightMm - elementHeightMm(el)) / 2) * 10) / 10 });
+  }, [layout, update, widthMm, heightMm]);
+
+  /** Cambia el orden de apilado (el último se dibuja encima). */
+  const reorder = useCallback((id: string, dir: 'front' | 'back') => {
+    const rest = layout.elements.filter(e => e.id !== id);
+    const el = layout.elements.find(e => e.id === id);
+    if (!el) return;
+    onChange({ ...layout, elements: dir === 'front' ? [...rest, el] : [el, ...rest] });
+  }, [layout, onChange]);
+
+  // Mover el elemento seleccionado con las flechas del teclado (Shift = 1 mm).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!selectedId) return;
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+
+      const el = layout.elements.find(x => x.id === selectedId);
+      if (!el) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        remove(selectedId);
+        return;
+      }
+
+      const step = e.shiftKey ? 1 : 0.5;
+      const moves: Record<string, [number, number]> = {
+        ArrowLeft: [-step, 0], ArrowRight: [step, 0],
+        ArrowUp: [0, -step], ArrowDown: [0, step],
+      };
+      const move = moves[e.key];
+      if (!move) return;
+      e.preventDefault();
+      const h = elementHeightMm(el);
+      update(selectedId, {
+        xMm: Math.round(Math.max(0, Math.min(widthMm - el.wMm, el.xMm + move[0])) * 10) / 10,
+        yMm: Math.round(Math.max(0, Math.min(heightMm - h, el.yMm + move[1])) * 10) / 10,
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId, layout, update, remove, widthMm, heightMm]);
 
   const addElement = (field: LabelField) => {
     const isQr = field === 'qr';
@@ -88,12 +171,11 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
     const el = layout.elements.find(x => x.id === id);
     if (!el) return;
     const p = screenToCanvas(e.clientX, e.clientY);
-    const xMm = Math.round(((p.x - offX) / px) * 10) / 10;
-    const yMm = Math.round(((p.y - offY) / px) * 10) / 10;
-    const maxW = el.field === 'qr' ? el.wMm : el.wMm;
-    const elH = el.field === 'qr' ? el.wMm : Math.max(2, el.fontSize * 0.45);
+    const xMm = snapMm((p.x - offX) / px);
+    const yMm = snapMm((p.y - offY) / px);
+    const elH = elementHeightMm(el);
     update(id, {
-      xMm: Math.max(0, Math.min(widthMm - maxW, xMm)),
+      xMm: Math.max(0, Math.min(widthMm - el.wMm, xMm)),
       yMm: Math.max(0, Math.min(heightMm - elH, yMm)),
     });
   };
@@ -122,13 +204,33 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
         ))}
         <Button
           size="sm"
-          variant="outline"
+          variant={snap ? 'default' : 'outline'}
           type="button"
           className="ml-auto"
-          onClick={() => setPreviewRot(r => ((r + 90) % 360) as 0 | 90 | 180 | 270)}
-          title="Girar vista previa"
+          onClick={() => setSnap(s => !s)}
+          title="Ajustar a cuadrícula de 0,5 mm"
         >
-          <RotateCw className="h-3.5 w-3.5 mr-1" /> Girar ({previewRot}°)
+          <Grid3x3 className="h-3.5 w-3.5 mr-1" /> Cuadrícula
+        </Button>
+        {onRotate && (
+          <Button
+            size="sm"
+            variant="outline"
+            type="button"
+            onClick={() => { setPreviewRot(0); onRotate(); }}
+            title="Gira la etiqueta 90°: cambia el papel y el diseño con él (así se imprimirá)"
+          >
+            <RotateCw className="h-3.5 w-3.5 mr-1" /> Girar etiqueta 90°
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant={previewRot ? 'default' : 'ghost'}
+          type="button"
+          onClick={() => setPreviewRot(r => ((r + 90) % 360) as 0 | 90 | 180 | 270)}
+          title="Sólo inclina la vista para revisar; no cambia lo que se imprime"
+        >
+          Ver girado{previewRot ? ` (${previewRot}°)` : ''}
         </Button>
         <Button
           size="sm"
@@ -145,7 +247,8 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
         {/* Canvas */}
         <div className="space-y-1">
           <div className="text-[10px] text-muted-foreground">
-            {widthMm} × {heightMm} mm · arrastra los elementos {previewRot ? `· vista girada ${previewRot}°` : ''}
+            {widthMm} × {heightMm} mm · arrastra los elementos o muévelos con las flechas
+            {previewRot ? ` · vista girada ${previewRot}°` : ''}
           </div>
           <div style={{ width: outerW, height: outerH }} className="relative">
             <div
@@ -206,7 +309,16 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
           {!selected ? (
             <div className="text-xs text-muted-foreground">Selecciona un elemento del lienzo para editar su posición, tamaño y formato.</div>
           ) : (
-            <ElementProps el={selected} widthMm={widthMm} heightMm={heightMm} onChange={(p) => update(selected.id, p)} onRemove={() => remove(selected.id)} />
+            <ElementProps
+              el={selected}
+              widthMm={widthMm}
+              heightMm={heightMm}
+              onChange={(p) => update(selected.id, p)}
+              onRemove={() => remove(selected.id)}
+              onDuplicate={() => duplicate(selected.id)}
+              onCenter={(axis) => center(selected.id, axis)}
+              onReorder={(dir) => reorder(selected.id, dir)}
+            />
           )}
         </Card>
       </div>
@@ -215,10 +327,14 @@ export function LabelDesigner({ widthMm, heightMm, layout, onChange }: Props) {
 }
 
 function ElementProps({
-  el, widthMm, heightMm, onChange, onRemove,
+  el, widthMm, heightMm, onChange, onRemove, onDuplicate, onCenter, onReorder,
 }: {
   el: LabelElement; widthMm: number; heightMm: number;
-  onChange: (p: Partial<LabelElement>) => void; onRemove: () => void;
+  onChange: (p: Partial<LabelElement>) => void;
+  onRemove: () => void;
+  onDuplicate: () => void;
+  onCenter: (axis: 'x' | 'y') => void;
+  onReorder: (dir: 'front' | 'back') => void;
 }) {
   const isQr = el.field === 'qr';
   const num = (v: string) => Number(v) || 0;
@@ -227,8 +343,29 @@ function ElementProps({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="font-medium">{FIELD_LABELS[el.field]}</div>
-        <Button size="sm" variant="ghost" type="button" onClick={onRemove} className="text-destructive">
-          <Trash2 className="h-3.5 w-3.5" />
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" type="button" onClick={onDuplicate} title="Duplicar">
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" type="button" onClick={onRemove} className="text-destructive" title="Eliminar (Supr)">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1">
+        <Button size="sm" variant="outline" type="button" onClick={() => onCenter('x')} title="Centrar horizontalmente">
+          <AlignHorizontalJustifyCenter className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="outline" type="button" onClick={() => onCenter('y')} title="Centrar verticalmente">
+          <AlignVerticalJustifyCenter className="h-3.5 w-3.5" />
+        </Button>
+        <div className="mx-1 h-5 w-px bg-border" />
+        <Button size="sm" variant="outline" type="button" onClick={() => onReorder('front')} title="Traer al frente">
+          <ArrowUp className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="outline" type="button" onClick={() => onReorder('back')} title="Enviar atrás">
+          <ArrowDown className="h-3.5 w-3.5" />
         </Button>
       </div>
 

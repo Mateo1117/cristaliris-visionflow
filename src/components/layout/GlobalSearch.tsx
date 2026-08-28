@@ -13,6 +13,18 @@ interface SearchResult {
   subtitle: string;
 }
 
+/**
+ * Sanea el término antes de interpolarlo en un filtro de PostgREST.
+ *
+ * En `or(col.ilike.%texto%,otra.ilike.%texto%)` la coma separa condiciones y
+ * los paréntesis agrupan: si el usuario escribe `,`, `(`, `)`, `"` o `\` el
+ * filtro deja de parsearse y la búsqueda devuelve error (antes fallaba en
+ * silencio y no aparecía ningún resultado). Los caracteres estructurales se
+ * cambian por espacio y se colapsan los espacios repetidos.
+ */
+const sanitizarTermino = (texto: string): string =>
+  texto.replace(/[,()"\\]/g, ' ').replace(/\s+/g, ' ').trim();
+
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -29,8 +41,10 @@ export function GlobalSearch() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  const termino = sanitizarTermino(query);
+
   useEffect(() => {
-    if (!query || query.length < 2) { setResults([]); return; }
+    if (termino.length < 2) { setResults([]); return; }
     const timeout = setTimeout(async () => {
       setLoading(true);
       try {
@@ -39,7 +53,7 @@ export function GlobalSearch() {
         // Search pacientes
         const { data: pacientes } = await supabase.from('pacientes')
           .select('id, nombres, apellidos, numero_documento')
-          .or(`nombres.ilike.%${query}%,apellidos.ilike.%${query}%,numero_documento.ilike.%${query}%`)
+          .or(`nombres.ilike.%${termino}%,apellidos.ilike.%${termino}%,numero_documento.ilike.%${termino}%`)
           .limit(5);
         (pacientes || []).forEach(p => all.push({
           id: p.id, type: 'paciente',
@@ -50,7 +64,7 @@ export function GlobalSearch() {
         // Search orden_productos
         const { data: productos } = await supabase.from('orden_productos')
           .select('id, descripcion, ordenes(pacientes(nombres, apellidos))')
-          .ilike('descripcion', `%${query}%`)
+          .ilike('descripcion', `%${termino}%`)
           .limit(5);
         (productos || []).forEach((p: any) => all.push({
           id: p.id, type: 'orden',
@@ -61,7 +75,7 @@ export function GlobalSearch() {
         // Search inventario
         const { data: inv } = await supabase.from('inventario')
           .select('id, marca, modelo, codigo_referencia, tipo')
-          .or(`marca.ilike.%${query}%,modelo.ilike.%${query}%,codigo_referencia.ilike.%${query}%`)
+          .or(`marca.ilike.%${termino}%,modelo.ilike.%${termino}%,codigo_referencia.ilike.%${termino}%`)
           .limit(5);
         (inv || []).forEach(i => all.push({
           id: i.id, type: 'inventario',
@@ -74,14 +88,24 @@ export function GlobalSearch() {
       setLoading(false);
     }, 300);
     return () => clearTimeout(timeout);
-  }, [query]);
+  }, [termino]);
 
+  /**
+   * Navega a la página del resultado llevando el contexto en la URL.
+   *
+   * Se envían dos parámetros: `id` (registro exacto) y `q` (término de
+   * búsqueda). NOTA: hoy ninguna de las páginas destino (Pacientes, Órdenes,
+   * Inventario) lee `useSearchParams`, así que todavía no preseleccionan ni
+   * resaltan el registro; en cuanto lo hagan, el contexto ya viaja en la URL y
+   * `q` sirve además como filtro de texto de respaldo.
+   */
   const handleSelect = (r: SearchResult) => {
     setOpen(false);
+    const params = new URLSearchParams({ id: r.id });
+    if (termino) params.set('q', termino);
     setQuery('');
-    if (r.type === 'paciente') navigate('/pacientes');
-    else if (r.type === 'orden') navigate('/ordenes');
-    else navigate('/inventario');
+    const ruta = r.type === 'paciente' ? '/pacientes' : r.type === 'orden' ? '/ordenes' : '/inventario';
+    navigate(`${ruta}?${params.toString()}`);
   };
 
   const typeIcon: Record<string, any> = {
@@ -119,8 +143,8 @@ export function GlobalSearch() {
           </div>
           <div className="max-h-[300px] overflow-y-auto">
             {loading && <p className="p-4 text-sm text-muted-foreground text-center">Buscando...</p>}
-            {!loading && query.length >= 2 && results.length === 0 && (
-              <p className="p-4 text-sm text-muted-foreground text-center">Sin resultados para "{query}"</p>
+            {!loading && termino.length >= 2 && results.length === 0 && (
+              <p className="p-4 text-sm text-muted-foreground text-center">Sin resultados para "{termino}"</p>
             )}
             {results.map((r) => (
               <button

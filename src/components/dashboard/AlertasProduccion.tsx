@@ -5,10 +5,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { differenceInCalendarDays } from 'date-fns';
+import { diasHabilesEntre, useFestivos } from '@/lib/businessDays';
 
 /**
- * Reglas de tiempo máximo en producción (laboratorio):
+ * Reglas de tiempo máximo en producción (laboratorio), en días HÁBILES
+ * (lunes a viernes, excluyendo festivos de la tabla `festivos`):
  * - Lentes progresivos, tallas, sol con fórmula → 3 días
  * - Lentes terminados → 1 día
  * - Monturas 3 piezas / lentes terminados → 2 días
@@ -58,8 +59,10 @@ interface AlertaProducto {
 }
 
 export function AlertasProduccion() {
+  const { festivos } = useFestivos();
+
   const { data: alertas = [], isLoading } = useQuery({
-    queryKey: ['alertas-produccion-lab'],
+    queryKey: ['alertas-produccion-lab', festivos],
     queryFn: async () => {
       // Products currently in lab states
       const labStates = ['enviado_laboratorio', 'recibido_laboratorio', 'en_produccion', 'producido'] as const;
@@ -74,7 +77,8 @@ export function AlertasProduccion() {
 
       (data || []).forEach((p: any) => {
         const fechaRef = p.fecha_envio_lab || p.created_at;
-        const dias = differenceInCalendarDays(now, new Date(fechaRef));
+        // Días HÁBILES desde el envío al laboratorio (README 3.4).
+        const dias = Math.max(0, diasHabilesEntre(fechaRef, now, festivos));
         const { maxDays, categoria } = getMaxDays(p.tipo_producto, p.lente_tipo, p.tipo_lente_tiempo, p.descripcion);
 
         if (dias >= maxDays) {
@@ -134,10 +138,11 @@ export function AlertasProduccion() {
               </div>
             </div>
 
-            <div className="text-[10px] text-muted-foreground mb-2 flex gap-4">
-              <span>⏱ Progresivo/Talla/Sol: 3 días</span>
-              <span>⏱ Terminado: 1 día</span>
-              <span>⏱ Montura 3P/Terminado: 2 días</span>
+            <div className="text-[10px] text-muted-foreground mb-2 flex gap-4 flex-wrap">
+              <span>⏱ Progresivo/Talla/Sol: 3 días hábiles</span>
+              <span>⏱ Terminado: 1 día hábil</span>
+              <span>⏱ Montura 3P/Terminado: 2 días hábiles</span>
+              <span>Sábados, domingos y festivos no cuentan</span>
             </div>
 
             <Table>
@@ -148,7 +153,7 @@ export function AlertasProduccion() {
                   <TableHead>Laboratorio</TableHead>
                   <TableHead>Categoría</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Días</TableHead>
+                  <TableHead className="text-right">Días háb.</TableHead>
                   <TableHead className="text-right">Máx</TableHead>
                 </TableRow>
               </TableHeader>

@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, Clock, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { DIAS_ADAPTACION, adaptacionCumplida, diasRestantesAdaptacion } from '@/lib/businessDays';
 import { toast } from 'sonner';
 
 const estadoColor: Record<string, string> = {
@@ -23,6 +24,17 @@ const estadoColor: Record<string, string> = {
   rechazada: 'bg-destructive/10 text-destructive',
   entregada: 'bg-muted text-muted-foreground',
 };
+
+/**
+ * ÚNICA fuente de verdad del subcódigo de garantía (README, Módulo 5.2).
+ *
+ * Formato: `G{ciclo}-{8 primeros caracteres del id del producto}`, p. ej.
+ * `G2-3F9A1C0B`. El control de calidad ya NO genera garantías (un rechazo antes
+ * de entregar es un reproceso interno), así que este generador vive solo aquí.
+ */
+function generarSubcodigoGarantia(ordenProductoId: string, ciclo: number): string {
+  return `G${ciclo}-${ordenProductoId.slice(0, 8).toUpperCase()}`;
+}
 
 export default function Warranties() {
   const [search, setSearch] = useState('');
@@ -44,16 +56,47 @@ export default function Warranties() {
     },
   });
 
+  /**
+   * Productos que pueden pedir garantía: SOLO los ya ENTREGADOS.
+   * La garantía aplica DESPUÉS de la entrega (README, Módulo 3.2). Antes de
+   * entregar, un error se gestiona como reproceso interno desde Control de Calidad.
+   *
+   * `fecha_entrega_real` es la referencia del protocolo de adaptación. Como en
+   * datos históricos puede estar vacía, se usa como respaldo la fecha del cambio
+   * de estado a 'entregado' registrado en `estados_producto`.
+   */
   const { data: productos = [] } = useQuery({
     queryKey: ['orden-productos-garantia'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orden_productos')
-        .select('id, descripcion, tipo_producto, orden_id, ordenes(pacientes(nombres, apellidos))')
-        .neq('estado_actual', 'entregado')
+        .select('id, descripcion, tipo_producto, orden_id, fecha_entrega_real, ciclo_garantia, ordenes(pacientes(nombres, apellidos))')
+        .eq('estado_actual', 'entregado')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data;
+
+      const lista = data ?? [];
+      const sinFecha = lista.filter((p: any) => !p.fecha_entrega_real).map((p: any) => p.id);
+      const respaldo: Record<string, string> = {};
+
+      if (sinFecha.length > 0) {
+        const { data: cambios, error: errCambios } = await supabase
+          .from('estados_producto')
+          .select('orden_producto_id, fecha_cambio')
+          .in('orden_producto_id', sinFecha)
+          .eq('estado_nuevo', 'entregado')
+          .order('fecha_cambio', { ascending: false });
+        if (errCambios) throw errCambios;
+        // El primero de cada producto es el cambio a 'entregado' más reciente.
+        (cambios ?? []).forEach((c: any) => {
+          if (!respaldo[c.orden_producto_id]) respaldo[c.orden_producto_id] = c.fecha_cambio;
+        });
+      }
+
+      return lista.map((p: any) => ({
+        ...p,
+        fecha_entrega_efectiva: p.fecha_entrega_real || respaldo[p.id] || null,
+      }));
     },
   });
 
@@ -68,14 +111,17 @@ export default function Warranties() {
 
   const createGarantia = useMutation({
     mutationFn: async (formData: Record<string, any>) => {
-      // Count existing garantias for this product to determine ciclo
-      const { count } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // El ciclo se deriva de las garantías ya registradas para el producto.
+      const { count, error: errCount } = await supabase
         .from('garantias')
         .select('id', { count: 'exact', head: true })
         .eq('orden_producto_id', formData.orden_producto_id);
+      if (errCount) throw errCount;
 
       const ciclo = (count || 0) + 1;
-      const subcodigo = `G${ciclo}-${formData.orden_producto_id.slice(0, 8).toUpperCase()}`;
+      const subcodigo = generarSubcodigoGarantia(formData.orden_producto_id, ciclo);
 
       const { error } = await supabase.from('garantias').insert({
         orden_producto_id: formData.orden_producto_id,
@@ -89,29 +135,64 @@ export default function Warranties() {
       });
       if (error) throw error;
 
-      // Reset product state to pedido_creado
-      await supabase.from('orden_productos').update({
+      // La garantía recorre de nuevo el flujo de estados, marcada como garantía.
+      const { error: errProducto } = await supabase.from('orden_productos').update({
         estado_actual: 'pedido_creado' as any,
         es_garantia: true,
         ciclo_garantia: ciclo,
         garantia_codigo: subcodigo,
       }).eq('id', formData.orden_producto_id);
+      if (errProducto) throw errProducto;
+
+      // Registra el reinicio del ciclo en la trazabilidad de estados.
+      const { error: errEstado } = await supabase.from('estados_producto').insert({
+        orden_producto_id: formData.orden_producto_id,
+        estado_anterior: 'entregado' as any,
+        estado_nuevo: 'pedido_creado' as any,
+        metodo: 'garantia',
+        justificacion: `Garantía ${subcodigo}: ${formData.motivo}`,
+        usuario_id: user?.id || null,
+      });
+      if (errEstado) throw errEstado;
+
+      // Módulo 5.2: más de una garantía ⇒ alerta automática al administrador.
+      if (ciclo > 1) {
+        const { error: errNotif } = await supabase.from('notificaciones').insert({
+          tipo: 'garantia_reincidente',
+          titulo: `Producto con ${ciclo} garantías (${subcodigo})`,
+          detalle: `Este producto ya tiene más de una garantía. Motivo actual: ${formData.motivo}`,
+          orden_producto_id: formData.orden_producto_id,
+        });
+        // La notificación no debe impedir la creación de la garantía.
+        if (errNotif) toast.error('Garantía creada, pero no se pudo notificar al administrador');
+      }
+
+      return { subcodigo, ciclo };
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['garantias'] });
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['orden-productos-garantia'] });
+      queryClient.invalidateQueries({ queryKey: ['db-notificaciones'] });
       setShowForm(false);
       setSelectedProducto('');
       setSelectedLab('');
-      toast.success('Garantía creada exitosamente');
+      toast.success(`Garantía ${res.subcodigo} creada exitosamente`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message || 'No se pudo crear la garantía'),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedProducto) { toast.error('Seleccione un producto'); return; }
+    if (!fechaEntregaSeleccionada) {
+      toast.error('El producto no tiene fecha de entrega registrada: no se puede validar el periodo de adaptación');
+      return;
+    }
+    if (!adaptacionOk) {
+      toast.error(`Protocolo de adaptación: faltan ${diasRestantes} día(s) para poder solicitar la garantía`);
+      return;
+    }
     const fd = new FormData(e.currentTarget);
     const data: Record<string, any> = { orden_producto_id: selectedProducto };
     fd.forEach((v, k) => { data[k] = v; });
@@ -136,7 +217,13 @@ export default function Warranties() {
   const countCalidad = garantias.filter((g: any) => g.observaciones?.toLowerCase().includes('rechazado en control de calidad')).length;
   const countCliente = garantias.length - countCalidad;
 
-  const selectedProd = productos.find((p: any) => p.id === selectedProducto);
+  const selectedProd: any = productos.find((p: any) => p.id === selectedProducto);
+
+  // Protocolo de adaptación (Módulo 5.1): 7 días calendario desde la entrega.
+  const fechaEntregaSeleccionada: string | null = selectedProd?.fecha_entrega_efectiva || null;
+  const diasRestantes = diasRestantesAdaptacion(fechaEntregaSeleccionada);
+  const adaptacionOk = adaptacionCumplida(fechaEntregaSeleccionada);
+  const puedeSolicitar = !!selectedProd && !!fechaEntregaSeleccionada && adaptacionOk;
 
   return (
     <AppLayout>
@@ -152,7 +239,7 @@ export default function Warranties() {
         <Tabs value={origen} onValueChange={(v) => setOrigen(v as any)}>
           <TabsList>
             <TabsTrigger value="todas">Todas ({garantias.length})</TabsTrigger>
-            <TabsTrigger value="calidad">Rechazo Calidad ({countCalidad})</TabsTrigger>
+            <TabsTrigger value="calidad">Rechazo Calidad — histórico ({countCalidad})</TabsTrigger>
             <TabsTrigger value="cliente">Solicitud Cliente ({countCliente})</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -208,11 +295,13 @@ export default function Warranties() {
           <DialogHeader><DialogTitle>Nueva Garantía</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label>Producto de Orden *</Label>
+              <Label>Producto de Orden * <span className="text-muted-foreground font-normal">(solo productos entregados)</span></Label>
               <Select value={selectedProducto} onValueChange={setSelectedProducto}>
                 <SelectTrigger><SelectValue placeholder="Seleccione producto" /></SelectTrigger>
                 <SelectContent>
-                  {productos.map((p: any) => {
+                  {productos.length === 0 ? (
+                    <div className="px-2 py-3 text-xs text-muted-foreground">No hay productos entregados</div>
+                  ) : productos.map((p: any) => {
                     const pac = p.ordenes?.pacientes;
                     return (
                       <SelectItem key={p.id} value={p.id}>
@@ -224,9 +313,41 @@ export default function Warranties() {
               </Select>
               {selectedProd && (
                 <div className="bg-muted/50 rounded-md p-2 text-xs space-y-1">
-                  <p><span className="text-muted-foreground">Paciente:</span> <strong>{(selectedProd as any).ordenes?.pacientes?.nombres} {(selectedProd as any).ordenes?.pacientes?.apellidos}</strong></p>
+                  <p><span className="text-muted-foreground">Paciente:</span> <strong>{selectedProd.ordenes?.pacientes?.nombres} {selectedProd.ordenes?.pacientes?.apellidos}</strong></p>
                   <p><span className="text-muted-foreground">Producto:</span> {selectedProd.descripcion}</p>
                   <p><span className="text-muted-foreground">Tipo:</span> <Badge variant="outline" className="text-[10px]">{selectedProd.tipo_producto}</Badge></p>
+                  <p>
+                    <span className="text-muted-foreground">Entregado:</span>{' '}
+                    {fechaEntregaSeleccionada ? new Date(fechaEntregaSeleccionada).toLocaleDateString('es-CO') : '—'}
+                    {selectedProd.fecha_entrega_real ? '' : fechaEntregaSeleccionada ? ' (según historial de estados)' : ''}
+                  </p>
+                  {(selectedProd.ciclo_garantia || 0) >= 1 && (
+                    <p className="text-warning flex items-center gap-1">
+                      <ShieldAlert className="h-3 w-3" />
+                      Este producto ya tiene {selectedProd.ciclo_garantia} garantía(s) previa(s)
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Protocolo de adaptación: 7 días calendario desde la entrega */}
+              {selectedProd && !fechaEntregaSeleccionada && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                  Sin fecha de entrega registrada. No se puede validar el periodo de adaptación de {DIAS_ADAPTACION} días.
+                </div>
+              )}
+              {selectedProd && fechaEntregaSeleccionada && !adaptacionOk && (
+                <div className="rounded-md border border-warning/30 bg-warning/10 p-2 text-xs flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-warning shrink-0" />
+                  <span>
+                    <strong>Faltan {diasRestantes} día(s) para fin de adaptación.</strong>{' '}
+                    No se puede solicitar garantía antes de {DIAS_ADAPTACION} días calendario desde la entrega.
+                  </span>
+                </div>
+              )}
+              {selectedProd && puedeSolicitar && (
+                <div className="rounded-md border border-success/30 bg-success/10 p-2 text-xs">
+                  Periodo de adaptación cumplido — puede solicitar la garantía.
                 </div>
               )}
             </div>
@@ -271,7 +392,9 @@ export default function Warranties() {
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createGarantia.isPending}>{createGarantia.isPending ? 'Creando...' : 'Crear Garantía'}</Button>
+              <Button type="submit" disabled={createGarantia.isPending || !puedeSolicitar}>
+                {createGarantia.isPending ? 'Creando...' : 'Solicitar Garantía'}
+              </Button>
             </div>
           </form>
         </DialogContent>

@@ -9,28 +9,32 @@ import {
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarHeader, SidebarFooter, useSidebar,
 } from '@/components/ui/sidebar';
+import { usePermissions, ACCESO_MODULO, type Modulo } from '@/hooks/usePermissions';
 
-const mainItems = [
-  { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-  { title: 'Pacientes', url: '/pacientes', icon: Users },
-  { title: 'Agenda', url: '/agenda', icon: Calendar },
-  { title: 'Cotizaciones', url: '/cotizaciones', icon: FileText },
-  { title: 'Órdenes', url: '/ordenes', icon: ClipboardList },
-  { title: 'Control Calidad', url: '/control-calidad', icon: CheckSquare },
+type NavItem = { title: string; url: string; icon: typeof LayoutDashboard; modulo: Modulo };
+
+const mainItems: NavItem[] = [
+  { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard, modulo: 'dashboard' },
+  { title: 'Pacientes', url: '/pacientes', icon: Users, modulo: 'pacientes' },
+  { title: 'Historia Clínica', url: '/historias', icon: Stethoscope, modulo: 'historias' },
+  { title: 'Agenda', url: '/agenda', icon: Calendar, modulo: 'agenda' },
+  { title: 'Cotizaciones', url: '/cotizaciones', icon: FileText, modulo: 'cotizaciones' },
+  { title: 'Órdenes', url: '/ordenes', icon: ClipboardList, modulo: 'ordenes' },
+  { title: 'Control Calidad', url: '/control-calidad', icon: CheckSquare, modulo: 'control-calidad' },
 ];
 
-const operacionItems = [
-  { title: 'Inventario', url: '/inventario', icon: Package },
-  { title: 'Cartera', url: '/cartera', icon: Wallet },
-  { title: 'Garantías', url: '/garantias', icon: ShieldCheck },
-  { title: 'Reportes', url: '/reportes', icon: BarChart3 },
-  { title: 'Escanear QR', url: '/scan', icon: QrCode },
+const operacionItems: NavItem[] = [
+  { title: 'Inventario', url: '/inventario', icon: Package, modulo: 'inventario' },
+  { title: 'Cartera', url: '/cartera', icon: Wallet, modulo: 'cartera' },
+  { title: 'Garantías', url: '/garantias', icon: ShieldCheck, modulo: 'garantias' },
+  { title: 'Reportes', url: '/reportes', icon: BarChart3, modulo: 'reportes' },
+  { title: 'Escanear QR', url: '/scan', icon: QrCode, modulo: 'scan' },
 ];
 
-const configItems = [
-  { title: 'Usuarios', url: '/usuarios', icon: UserCog },
-  { title: 'Configuración', url: '/configuracion', icon: Settings },
-  { title: 'API Docs', url: '/api-docs', icon: FileText },
+const configItems: NavItem[] = [
+  { title: 'Usuarios', url: '/usuarios', icon: UserCog, modulo: 'usuarios' },
+  { title: 'Configuración', url: '/configuracion', icon: Settings, modulo: 'configuracion' },
+  { title: 'API Docs', url: '/api-docs', icon: FileText, modulo: 'api-docs' },
 ];
 
 export function AppSidebar() {
@@ -38,26 +42,36 @@ export function AppSidebar() {
   const collapsed = state === 'collapsed';
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
+  const { canView, isLoading } = usePermissions();
 
-  const renderGroup = (label: string, items: typeof mainItems) => (
-    <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
-      <SidebarGroupContent>
-        <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
-                <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium">
-                  <item.icon className="h-4 w-4" />
-                  {!collapsed && <span>{item.title}</span>}
-                </NavLink>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
-  );
+  const renderGroup = (label: string, items: NavItem[]) => {
+    // Mientras carga el rol solo mostramos los ítems sin restricción, para no
+    // exponer secciones restringidas ni dejar el menú vacío.
+    const visibles = items.filter((item) =>
+      isLoading ? !ACCESO_MODULO[item.modulo] : canView(item.modulo)
+    );
+    if (visibles.length === 0) return null;
+
+    return (
+      <SidebarGroup>
+        <SidebarGroupLabel>{label}</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {visibles.map((item) => (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
+                  <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium">
+                    <item.icon className="h-4 w-4" />
+                    {!collapsed && <span>{item.title}</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  };
 
   return (
     <Sidebar collapsible="icon">

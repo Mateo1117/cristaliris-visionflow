@@ -18,19 +18,13 @@ import { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-
-const DESCUENTO_MONTURA_PROPIA = 90000;
-
-const MEDIOS_PAGO = [
-  { v: 'efectivo', l: 'Efectivo' },
-  { v: 'datafono', l: 'Datafono' },
-  { v: 'transferencia', l: 'Transferencia' },
-  { v: 'tarjeta', l: 'Tarjeta Crédito' },
-  { v: 'addi', l: 'Addi' },
-  { v: 'sistecredito', l: 'Sistecrédito' },
-  { v: 'llave', l: 'Llave' },
-  { v: 'nomina', l: 'Nómina' },
-];
+import {
+  MEDIOS_PAGO,
+  DESCUENTO_MONTURA_PROPIA,
+  calcularTotales,
+  descuentoEfectivo,
+  reglaMedioPago,
+} from '@/lib/pricing';
 
 interface OrderItem {
   producto_catalogo_id?: string | null;
@@ -125,14 +119,19 @@ export default function Orders() {
   const pacienteSel = pacientes.find((p: any) => p.id === selectedPaciente);
   const descuentoConvenio: number = (pacienteSel?.empresas?.porcentaje_descuento as number) || 0;
 
+  // Descuento realmente aplicable: el del convenio menos 5 puntos si el medio de pago
+  // del saldo es tarjeta / Addi / Sistecrédito / link de pago (README 6.1).
+  const pctEfectivo = descuentoEfectivo(descuentoConvenio, medioPagoSaldo);
+  const reglaSaldo = reglaMedioPago(medioPagoSaldo);
+
+  // Al cambiar el convenio o el medio de pago se recalcula el % de cada línea.
   useEffect(() => {
     setItems((prev) => prev.map((it) =>
-      it.aplica_descuento ? { ...it, descuento_porcentaje: descuentoConvenio } : { ...it, descuento_porcentaje: 0 }
+      it.aplica_descuento ? { ...it, descuento_porcentaje: pctEfectivo } : { ...it, descuento_porcentaje: 0 }
     ));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [descuentoConvenio]);
+  }, [pctEfectivo]);
 
-  const addItem = () => setItems([...items, nuevoItem(descuentoConvenio)]);
+  const addItem = () => setItems([...items, nuevoItem(pctEfectivo)]);
   const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
   const updateItem = (i: number, patch: Partial<OrderItem>) => {
     const updated = [...items];
@@ -144,7 +143,7 @@ export default function Orders() {
     if (productoId === 'free') {
       updateItem(index, {
         producto_catalogo_id: null, descripcion: '', categoria: '', precio_unitario: 0,
-        aplica_descuento: true, descuento_porcentaje: descuentoConvenio, tipo_lente_tiempo: null,
+        aplica_descuento: true, descuento_porcentaje: pctEfectivo, tipo_lente_tiempo: null,
       });
       return;
     }
@@ -162,7 +161,7 @@ export default function Orders() {
       tipo_producto: 'lente',
       tipo_lente_tiempo: tipoTiempo,
       aplica_descuento: !!prod.aplica_descuento,
-      descuento_porcentaje: prod.aplica_descuento ? descuentoConvenio : 0,
+      descuento_porcentaje: prod.aplica_descuento ? pctEfectivo : 0,
     });
   };
 
@@ -171,18 +170,28 @@ export default function Orders() {
     updateItem(i, { medidas_progresivo: { ...cur, [field]: value } });
   };
 
+  /**
+   * Totales de la orden a partir de `pricing.ts` (fuente única de la lógica
+   * financiera). Se usa tanto para la vista previa como para lo que se persiste.
+   */
+  const computeTotales = (lista: OrderItem[]) =>
+    calcularTotales({
+      items: lista.map((it) => ({
+        cantidad: it.cantidad,
+        precioUnitario: it.precio_unitario,
+        aplicaDescuento: it.aplica_descuento,
+        descuentoPorcentaje: it.descuento_porcentaje,
+      })),
+      pctEmpresa: descuentoConvenio,
+      medioPago: medioPagoSaldo,
+      descuentoAdicional: monturaPropia ? DESCUENTO_MONTURA_PROPIA : 0,
+    });
+
   const totales = useMemo(() => {
-    const subtotal = items.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
-    const descuento = items.reduce((s, it) => {
-      const ls = it.cantidad * it.precio_unitario;
-      const pct = it.aplica_descuento ? (it.descuento_porcentaje || 0) : 0;
-      return s + ls * (pct / 100);
-    }, 0);
-    const descMontura = monturaPropia ? DESCUENTO_MONTURA_PROPIA : 0;
-    const total = Math.max(0, subtotal - descuento - descMontura);
-    const saldo = Math.max(0, total - (abono || 0));
-    return { subtotal, descuento, descMontura, total, saldo };
-  }, [items, monturaPropia, abono]);
+    const t = computeTotales(items);
+    return { ...t, saldo: Math.max(0, t.total - (abono || 0)) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, monturaPropia, abono, descuentoConvenio, medioPagoSaldo]);
 
   const productosPorCategoria = useMemo(() => {
     const groups: Record<string, any[]> = {};
@@ -205,27 +214,42 @@ export default function Orders() {
       const lineas = items.filter(it => it.descripcion);
       if (lineas.length === 0) throw new Error('Agregue al menos un ítem');
 
+      // Se recalculan los totales SOLO con las líneas que realmente se guardan,
+      // para que la orden y sus productos siempre cuadren.
+      const t = computeTotales(lineas);
+      const saldo = Math.max(0, t.total - (abono || 0));
+      if (abono > t.total) throw new Error('El abono inicial no puede superar el total de la orden');
+
       const { data: orden, error: oe } = await supabase.from('ordenes').insert({
         paciente_id: selectedPaciente,
         empresa_id: pacienteSel?.empresa_id || null,
         modalidad_pago: medioPagoSaldo,
-        subtotal: totales.subtotal,
-        descuento_empresa: totales.descuento,
-        descuento_porcentaje: descuentoConvenio,
-        descuento_montura_propia: totales.descMontura,
+        subtotal: t.subtotal,
+        // descuento_empresa / descuento_porcentaje son el DESGLOSE informativo de la
+        // orden. El descuento ya viene restado en orden_productos.precio_venta, pero
+        // total_final se deriva del subtotal bruto (no de la suma de precio_venta),
+        // por lo que no se descuenta dos veces.
+        descuento_empresa: t.descuentoValor,
+        descuento_porcentaje: t.descuentoPct,
+        descuento_montura_propia: t.descuentoAdicional,
         montura_propia: monturaPropia,
-        total_final: totales.total,
-        saldo_pendiente: totales.saldo,
-        estado_pago: totales.saldo === 0 ? 'pagado' : (abono > 0 ? 'parcial' : 'pendiente'),
+        recargo_financiero: t.recargoFinanciero,
+        total_final: t.total,
+        saldo_pendiente: saldo,
+        estado_pago: saldo === 0 ? 'pagado' : (abono > 0 ? 'parcial' : 'pendiente'),
         observaciones: observaciones || null,
       }).select('id, numero_orden').single();
       if (oe) throw oe;
 
-      const productosOrden = lineas.map((it) => ({
+      const productosOrden = lineas.map((it, i) => ({
         orden_id: orden.id,
         tipo_producto: it.tipo_producto || 'lente',
         descripcion: it.descripcion,
-        precio_venta: (it.cantidad || 1) * (it.precio_unitario || 0),
+        // Precio NETO de descuentos de convenio (cantidad × precio − descuento de la
+        // línea). Los reportes de utilidad asumen que precio_venta ya viene neto.
+        // LIMITACIÓN: `orden_productos` no tiene columna `cantidad`, así que la
+        // cantidad queda embebida en el precio total de la línea (ver utilityCalc.ts).
+        precio_venta: t.lineas[i].neto,
         producto_catalogo_id: it.producto_catalogo_id || null,
         laboratorio_id: it.laboratorio_id || null,
         tipo_lente_tiempo: it.tipo_lente_tiempo || null,
@@ -237,29 +261,35 @@ export default function Orders() {
       const { error: pe } = await supabase.from('orden_productos').insert(productosOrden);
       if (pe) throw pe;
 
+      const advertencias: string[] = [];
+
       // Abono inicial
       if (abono > 0) {
-        await supabase.from('abonos').insert({
+        const { error: ae } = await supabase.from('abonos').insert({
           paciente_id: selectedPaciente,
           orden_id: orden.id,
           monto: abono,
           medio_pago: medioPagoAbono,
           observaciones: `Abono inicial al crear orden`,
         });
+        if (ae) advertencias.push(`La orden se creó pero el abono inicial no se registró: ${ae.message}`);
       }
 
-      // Notificación interna automática
-      await supabase.from('notificaciones').insert({
+      // Notificación interna automática (no crítica)
+      const { error: ne } = await supabase.from('notificaciones').insert({
         tipo: 'orden_creada',
         titulo: `Nueva orden ORD-${String(orden.numero_orden).padStart(5, '0')}`,
-        detalle: `${pacienteSel?.nombres} ${pacienteSel?.apellidos} — Total $${totales.total.toLocaleString('es-CO')}`,
+        detalle: `${pacienteSel?.nombres} ${pacienteSel?.apellidos} — Total $${t.total.toLocaleString('es-CO')}`,
       });
+      if (ne) advertencias.push('No se pudo crear la notificación interna');
 
-      return { orden, paciente: pacienteSel };
+      return { orden, paciente: pacienteSel, total: t.total, saldo, advertencias };
     },
-    onSuccess: ({ orden, paciente }) => {
+    onSuccess: ({ orden, paciente, total, saldo, advertencias }) => {
+      advertencias.forEach((msg) => toast.warning(msg));
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['notificaciones'] });
+      queryClient.invalidateQueries({ queryKey: ['ordenes-cartera'] });
       const numeroLabel = `ORD-${String(orden.numero_orden).padStart(5, '0')}`;
       toast.success(`Orden ${numeroLabel} creada`, {
         action: paciente?.telefono ? {
@@ -269,8 +299,8 @@ export default function Orders() {
             const phone = clean.startsWith('57') ? clean : `57${clean}`;
             const msg = encodeURIComponent(
               `Hola ${paciente.nombres}, hemos creado su orden ${numeroLabel} en Cristal Iris. ` +
-              `Total: $${totales.total.toLocaleString('es-CO')}. ` +
-              (totales.saldo > 0 ? `Saldo pendiente: $${totales.saldo.toLocaleString('es-CO')}.` : 'Pago completo registrado.')
+              `Total: $${total.toLocaleString('es-CO')}. ` +
+              (saldo > 0 ? `Saldo pendiente: $${saldo.toLocaleString('es-CO')}.` : 'Pago completo registrado.')
             );
             window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
           },
@@ -324,7 +354,11 @@ export default function Orders() {
               </Select>
               {pacienteSel?.empresas && (
                 <p className="text-xs text-muted-foreground">
-                  Convenio aplicado por defecto: <span className="font-semibold text-primary">{descuentoConvenio}%</span>
+                  Convenio {descuentoConvenio}% · descuento efectivo aplicado:{' '}
+                  <span className="font-semibold text-primary">{pctEfectivo}%</span>
+                  {reglaSaldo.ajustaDescuento && (
+                    <span className="text-warning"> (−5 puntos por pago con {reglaSaldo.l})</span>
+                  )}
                 </p>
               )}
             </div>
@@ -472,9 +506,18 @@ export default function Orders() {
             {/* Totales */}
             <div className="rounded-lg border p-4 space-y-2 bg-muted/20">
               <div className="flex justify-between text-sm"><span>Subtotal</span><span>${totales.subtotal.toLocaleString('es-CO')}</span></div>
-              <div className="flex justify-between text-sm text-destructive"><span>Descuento convenio</span><span>-${totales.descuento.toLocaleString('es-CO')}</span></div>
+              <div className="flex justify-between text-sm text-destructive">
+                <span>Descuento convenio {totales.descuentoPct > 0 && `(${totales.descuentoPct}%)`}</span>
+                <span>-${totales.descuentoValor.toLocaleString('es-CO')}</span>
+              </div>
               {monturaPropia && (
-                <div className="flex justify-between text-sm text-destructive"><span>Montura propia</span><span>-${totales.descMontura.toLocaleString('es-CO')}</span></div>
+                <div className="flex justify-between text-sm text-destructive"><span>Montura propia</span><span>-${totales.descuentoAdicional.toLocaleString('es-CO')}</span></div>
+              )}
+              {totales.recargoFinanciero > 0 && (
+                <div className="flex justify-between text-sm text-warning">
+                  <span>Recargo financiero (9% · {reglaSaldo.l})</span>
+                  <span>+${totales.recargoFinanciero.toLocaleString('es-CO')}</span>
+                </div>
               )}
               <Separator />
               <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="text-primary">${totales.total.toLocaleString('es-CO')}</span></div>

@@ -8,8 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Building2, Beaker, Printer, RotateCcw, Save } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Plus, Building2, Beaker, Printer, RotateCcw, Save, ArrowLeftRight, CalendarDays } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -20,12 +20,20 @@ import {
   resetPrintSettings,
   DEFAULT_PRINT_SETTINGS,
   type PrintSettings,
+  type PrintSize,
   type Orientation,
 } from '@/lib/printing/printSettings';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
+import { FestivosManager } from '@/components/settings/FestivosManager';
 import { LabelDesigner } from '@/components/settings/LabelDesigner';
 import { PdfLabelPreview } from '@/components/settings/PdfLabelPreview';
-import { buildDefaultLayout, type LabelLayout } from '@/lib/printing/labelLayout';
+import {
+  buildDefaultLayout,
+  clampLayout,
+  reflowLayout,
+  scaleLayout,
+  type LabelLayout,
+} from '@/lib/printing/labelLayout';
 import {
   loadLabelCalibration,
   saveLabelCalibration,
@@ -109,8 +117,13 @@ export default function SettingsPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="sedes">Sedes</TabsTrigger>
           <TabsTrigger value="laboratorios">Laboratorios</TabsTrigger>
+          <TabsTrigger value="festivos"><CalendarDays className="h-4 w-4 mr-1" />Festivos</TabsTrigger>
           <TabsTrigger value="impresion"><Printer className="h-4 w-4 mr-1" />Impresión</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="festivos">
+          <FestivosManager />
+        </TabsContent>
 
         <TabsContent value="impresion">
           <PrintSettingsTab />
@@ -218,11 +231,100 @@ const PRESETS: Array<{ label: string; widthMm: number; heightMm: number; orienta
   { label: 'Ticket 30×50 (térmico)',    widthMm: 30, heightMm: 50, orientation: 'portrait',  target: 'receipt' },
   { label: 'Ticket 58×80 (térmico)',    widthMm: 58, heightMm: 80, orientation: 'portrait',  target: 'receipt' },
   { label: 'Ticket 80×120 (térmico)',   widthMm: 80, heightMm: 120, orientation: 'portrait', target: 'receipt' },
+  { label: 'Etiqueta 50×30 (rollo estándar)', widthMm: 50, heightMm: 30, orientation: 'landscape', target: 'label' },
   { label: 'Etiqueta 60×40 (QR lateral)', widthMm: 60, heightMm: 40, orientation: 'landscape', target: 'label' },
   { label: 'Etiqueta 40×30 (mini)',     widthMm: 40, heightMm: 30, orientation: 'landscape', target: 'label' },
   { label: 'Etiqueta 50×50 (cuadrada)', widthMm: 50, heightMm: 50, orientation: 'portrait',  target: 'label' },
   { label: 'Etiqueta 100×50 (ancha)',   widthMm: 100, heightMm: 50, orientation: 'landscape', target: 'label' },
 ];
+
+/**
+ * Tarjeta de tamaño de medio. Definida FUERA del componente padre: antes vivía
+ * dentro y React la recreaba en cada pulsación, lo que hacía que los campos
+ * perdieran el foco al escribir.
+ */
+function SizeCard({
+  title, description, size, presets, onUpdate, onSwap, onPreset, onTest,
+}: {
+  title: string;
+  description: string;
+  size: PrintSize;
+  presets: typeof PRESETS;
+  onUpdate: (field: 'widthMm' | 'heightMm' | 'orientation' | 'rotateContent', value: any) => void;
+  onSwap: () => void;
+  onPreset: (p: typeof PRESETS[number]) => void;
+  onTest: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_1fr] gap-3 items-end">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Ancho (mm)</Label>
+            <Input type="number" min={10} max={210} step="0.5" value={size.widthMm}
+              onChange={(e) => onUpdate('widthMm', e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Alto (mm)</Label>
+            <Input type="number" min={10} max={297} step="0.5" value={size.heightMm}
+              onChange={(e) => onUpdate('heightMm', e.target.value)} />
+          </div>
+          <Button type="button" variant="outline" size="icon" onClick={onSwap}
+            title="Intercambiar ancho y alto" className="mb-0.5">
+            <ArrowLeftRight className="h-4 w-4" />
+          </Button>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Orientación</Label>
+            <select
+              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={size.orientation}
+              onChange={(e) => onUpdate('orientation', e.target.value as Orientation)}
+            >
+              <option value="portrait">Vertical</option>
+              <option value="landscape">Horizontal</option>
+            </select>
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={!!size.rotateContent}
+            onChange={(e) => onUpdate('rotateContent', e.target.checked)}
+          />
+          <span>
+            Rotar contenido 90° <span className="text-xs text-muted-foreground">(usar si la impresora saca el contenido de lado)</span>
+          </span>
+        </label>
+
+        <div className="flex flex-wrap gap-2">
+          {presets.map(p => (
+            <Button key={p.label} type="button" size="sm" variant="outline" onClick={() => onPreset(p)}>
+              {p.label}
+            </Button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap justify-between items-center gap-2 pt-2 border-t">
+          <span className="text-xs text-muted-foreground">
+            Página: {size.orientation === 'landscape'
+              ? `${Math.max(size.widthMm, size.heightMm)} × ${Math.min(size.widthMm, size.heightMm)}`
+              : `${Math.min(size.widthMm, size.heightMm)} × ${Math.max(size.widthMm, size.heightMm)}`} mm
+            {' '}({size.orientation === 'portrait' ? 'vertical' : 'horizontal'}){size.rotateContent ? ' · contenido rotado 90°' : ''}
+          </span>
+          <Button type="button" size="sm" onClick={onTest}>
+            <Printer className="h-4 w-4 mr-1" /> Imprimir prueba
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 const layoutFits = (layout: LabelLayout | undefined, widthMm: number, heightMm: number): layout is LabelLayout => {
   return !!layout?.elements?.length && layout.elements.every((el) => {
@@ -231,15 +333,56 @@ const layoutFits = (layout: LabelLayout | undefined, widthMm: number, heightMm: 
   });
 };
 
+/**
+ * Página efectiva según la orientación: horizontal deja el lado largo a lo
+ * ancho y vertical a lo alto. Es la MISMA regla que aplica `thermal.ts` al
+ * imprimir, de modo que el lienzo del diseñador siempre coincide con el papel.
+ */
+export const paginaSegunOrientacion = (widthMm: number, heightMm: number, orientation: Orientation) => {
+  const largo = Math.max(widthMm, heightMm);
+  const corto = Math.min(widthMm, heightMm);
+  return orientation === 'landscape'
+    ? { pageW: largo, pageH: corto }
+    : { pageW: corto, pageH: largo };
+};
+
+type Pagina = { pageW: number; pageH: number };
+
+/**
+ * Lleva un diseño de una página a otra.
+ *
+ * Si la etiqueta pasa de horizontal a vertical (o al revés) el diseño se GIRA
+ * 90°, que es lo que espera quien lo dibujó; estirarlo dejaría los elementos
+ * aplastados y con huecos en la mitad. Si sólo cambia la medida, se reescala
+ * de forma uniforme. En ambos casos se encaja dentro del papel.
+ */
+const adaptarLayout = (layout: LabelLayout, antes: Pagina, ahora: Pagina): LabelLayout => {
+  const eraApaisada = antes.pageW >= antes.pageH;
+  const esApaisada = ahora.pageW >= ahora.pageH;
+
+  // Al girar la etiqueta se REORGANIZA (el QR cambia de sitio y los textos se
+  // vuelven a apilar); si sólo cambia la medida, basta con reescalar.
+  const adaptado = eraApaisada !== esApaisada
+    ? reflowLayout(layout, ahora.pageW, ahora.pageH)
+    : scaleLayout(layout, antes.pageW, antes.pageH, ahora.pageW, ahora.pageH);
+
+  return clampLayout(adaptado, ahora.pageW, ahora.pageH);
+};
+
 function PrintSettingsTab() {
   const [settings, setSettings] = useState<PrintSettings>(() => loadPrintSettings());
   const [calibration, setCalibration] = useState<LabelCalibration>(() => loadLabelCalibration());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // WYSIWYG: el diseñador trabaja siempre con las dimensiones físicas del papel
-  // (sin intercambiar W↔H según orientación). Lo que se ve es lo que se imprime.
-  const labelDesignWidth = settings.label.widthMm;
-  const labelDesignHeight = settings.label.heightMm;
+
+  // WYSIWYG: el diseñador usa la página REAL que se enviará a la impresora,
+  // incluida la orientación. Así se puede diseñar en horizontal o en vertical
+  // y lo que se ve es exactamente lo que sale impreso.
+  const { pageW: labelDesignWidth, pageH: labelDesignHeight } = paginaSegunOrientacion(
+    settings.label.widthMm,
+    settings.label.heightMm,
+    settings.label.orientation,
+  );
   const activeLabelLayout = layoutFits(settings.labelLayout, labelDesignWidth, labelDesignHeight)
     ? settings.labelLayout
     : buildDefaultLayout(labelDesignWidth, labelDesignHeight);
@@ -254,15 +397,54 @@ function PrintSettingsTab() {
     return () => { mounted = false; };
   }, []);
 
-  const update = (key: 'receipt' | 'label', field: 'widthMm' | 'heightMm' | 'orientation' | 'rotateContent', value: any) => {
-    setSettings(prev => ({
-      ...prev,
-      [key]: {
+  const update = useCallback((
+    key: 'receipt' | 'label',
+    field: 'widthMm' | 'heightMm' | 'orientation' | 'rotateContent',
+    value: any,
+  ) => {
+    setSettings(prev => {
+      const next: PrintSize = {
         ...prev[key],
-        [field]: field === 'orientation' ? value : field === 'rotateContent' ? Boolean(value) : (Number(value) || 0),
-      },
-    }));
-  };
+        [field]: field === 'orientation'
+          ? value
+          : field === 'rotateContent'
+            ? Boolean(value)
+            : (Number(value) || 0),
+      };
+
+      // Al cambiar la medida O la orientación de la etiqueta, el diseño se
+      // reescala a la nueva página en vez de perderse: los elementos conservan
+      // su posición relativa y su proporción.
+      const cambiaPagina = field === 'widthMm' || field === 'heightMm' || field === 'orientation';
+      if (key === 'label' && cambiaPagina && prev.labelLayout) {
+        const antes = paginaSegunOrientacion(prev.label.widthMm, prev.label.heightMm, prev.label.orientation);
+        const ahora = paginaSegunOrientacion(next.widthMm, next.heightMm, next.orientation);
+        if (ahora.pageW > 0 && ahora.pageH > 0 && antes.pageW > 0 && antes.pageH > 0) {
+          return {
+            ...prev,
+            label: next,
+            labelLayout: adaptarLayout(prev.labelLayout, antes, ahora),
+          };
+        }
+      }
+
+      return { ...prev, [key]: next };
+    });
+  }, []);
+
+  /** Intercambia ancho y alto (útil al cambiar entre etiquetas vertical/horizontal). */
+  const swapDimensions = useCallback((key: 'receipt' | 'label') => {
+    setSettings(prev => {
+      const cur = prev[key];
+      const swapped: PrintSize = { ...cur, widthMm: cur.heightMm, heightMm: cur.widthMm };
+      if (key === 'label' && prev.labelLayout) {
+        const antes = paginaSegunOrientacion(cur.widthMm, cur.heightMm, cur.orientation);
+        const ahora = paginaSegunOrientacion(swapped.widthMm, swapped.heightMm, swapped.orientation);
+        return { ...prev, label: swapped, labelLayout: adaptarLayout(prev.labelLayout, antes, ahora) };
+      }
+      return { ...prev, [key]: swapped };
+    });
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -290,13 +472,32 @@ function PrintSettingsTab() {
     }
   };
 
-  const applyPreset = (p: typeof PRESETS[number]) => {
+  const applyPreset = useCallback((p: typeof PRESETS[number]) => {
     setSettings(prev => {
-      if (p.target === 'receipt') return { ...prev, receipt: { widthMm: p.widthMm, heightMm: p.heightMm, orientation: p.orientation } };
-      if (p.target === 'label')   return { ...prev, label:   { widthMm: p.widthMm, heightMm: p.heightMm, orientation: p.orientation } };
+      if (p.target === 'receipt') {
+        return {
+          ...prev,
+          // Se conserva "rotar contenido": es una compensación del driver, no del tamaño.
+          receipt: { ...prev.receipt, widthMm: p.widthMm, heightMm: p.heightMm, orientation: p.orientation },
+        };
+      }
+      if (p.target === 'label') {
+        const label: PrintSize = {
+          ...prev.label,
+          widthMm: p.widthMm,
+          heightMm: p.heightMm,
+          orientation: p.orientation,
+        };
+        const antes = paginaSegunOrientacion(prev.label.widthMm, prev.label.heightMm, prev.label.orientation);
+        const ahora = paginaSegunOrientacion(p.widthMm, p.heightMm, p.orientation);
+        const layout = prev.labelLayout
+          ? adaptarLayout(prev.labelLayout, antes, ahora)
+          : buildDefaultLayout(ahora.pageW, ahora.pageH);
+        return { ...prev, label, labelLayout: layout };
+      }
       return prev;
     });
-  };
+  }, []);
 
   const testReceipt = async () => {
     try { await savePrintSettings(settings); } catch {/* sigue con caché */}
@@ -317,92 +518,22 @@ function PrintSettingsTab() {
   const testLabel = async () => {
     try { await savePrintSettings(settings); } catch {/* sigue con caché */}
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#fff"/><rect x="10" y="10" width="80" height="80" fill="#000"/><rect x="25" y="25" width="50" height="50" fill="#fff"/><rect x="40" y="40" width="20" height="20" fill="#000"/></svg>`;
+    // Datos de ejemplo COMPLETOS: si falta alguno, ese campo no se dibuja y
+    // parecería que el diseño está incompleto.
     await printThermalLabel({
       numero: 'ORD-0001',
       qrSvg: svg,
       paciente: 'Paciente Prueba',
       descripcion: 'Lente progresivo AR',
       laboratorio: 'Lab Óptico',
+      numeroOrdenLab: 'LAB-4821',
       numeroMontura: 'M-123',
+      fechaEntrega: new Date(),
+      sede: 'Sede Norte',
+      formula: 'OD -1.00 -0.50 x90 / OI -1.25 -0.75 x85',
     });
   };
 
-
-  const SizeCard = ({
-    title,
-    description,
-    sizeKey,
-    onTest,
-  }: {
-    title: string;
-    description: string;
-    sizeKey: 'receipt' | 'label';
-    onTest: () => void;
-  }) => {
-    const s = settings[sizeKey];
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{title}</CardTitle>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Ancho (mm)</Label>
-              <Input type="number" min={20} max={210} value={s.widthMm}
-                onChange={(e) => update(sizeKey, 'widthMm', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Alto (mm)</Label>
-              <Input type="number" min={20} max={297} value={s.heightMm}
-                onChange={(e) => update(sizeKey, 'heightMm', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Orientación</Label>
-              <select
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={s.orientation}
-                onChange={(e) => update(sizeKey, 'orientation', e.target.value as Orientation)}
-              >
-                <option value="portrait">Vertical</option>
-                <option value="landscape">Horizontal</option>
-              </select>
-            </div>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={!!s.rotateContent}
-              onChange={(e) => update(sizeKey, 'rotateContent', e.target.checked)}
-            />
-            <span>
-              Rotar contenido 90° <span className="text-xs text-muted-foreground">(usar si la impresora saca el contenido de lado)</span>
-            </span>
-          </label>
-
-          <div className="flex flex-wrap gap-2">
-            {PRESETS.filter(p => p.target === sizeKey).map(p => (
-              <Button key={p.label} type="button" size="sm" variant="outline" onClick={() => applyPreset(p)}>
-                {p.label}
-              </Button>
-            ))}
-          </div>
-
-          <div className="flex justify-between items-center pt-2 border-t">
-            <span className="text-xs text-muted-foreground">
-              Vista PDF: {s.widthMm} × {s.heightMm} mm ({s.orientation === 'portrait' ? 'vertical' : 'horizontal'}){s.rotateContent ? ' · rotado 90°' : ''}
-            </span>
-            <Button type="button" size="sm" onClick={onTest}>
-              <Printer className="h-4 w-4 mr-1" /> Imprimir prueba
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
   return (
     <div className="space-y-4">
@@ -419,14 +550,22 @@ function PrintSettingsTab() {
       <SizeCard
         title="Ticket / Recibo"
         description="Tamaño del ticket de venta impreso desde la orden."
-        sizeKey="receipt"
+        size={settings.receipt}
+        presets={PRESETS.filter(p => p.target === 'receipt')}
+        onUpdate={(field, value) => update('receipt', field, value)}
+        onSwap={() => swapDimensions('receipt')}
+        onPreset={applyPreset}
         onTest={testReceipt}
       />
 
       <SizeCard
         title="Etiqueta con QR"
-        description="Tamaño de la etiqueta con código QR para trazabilidad."
-        sizeKey="label"
+        description="Tamaño de la etiqueta con código QR para trazabilidad. El diseño se reescala automáticamente al cambiar la medida."
+        size={settings.label}
+        presets={PRESETS.filter(p => p.target === 'label')}
+        onUpdate={(field, value) => update('label', field, value)}
+        onSwap={() => swapDimensions('label')}
+        onPreset={applyPreset}
         onTest={testLabel}
       />
 
@@ -439,15 +578,30 @@ function PrintSettingsTab() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+            <span className="font-medium">
+              Diseñando en {labelDesignWidth} × {labelDesignHeight} mm
+              {' '}({settings.label.orientation === 'landscape' ? 'horizontal' : 'vertical'})
+            </span>
+            <span className="text-muted-foreground">
+              Usa «Girar etiqueta 90°» para diseñar en la otra orientación: el diseño gira con ella
+              y así se imprimirá.
+            </span>
+          </div>
           <LabelDesigner
             widthMm={labelDesignWidth}
             heightMm={labelDesignHeight}
             layout={activeLabelLayout}
             onChange={(l: LabelLayout) => setSettings(prev => ({ ...prev, labelLayout: l }))}
+            onRotate={() => update(
+              'label',
+              'orientation',
+              settings.label.orientation === 'landscape' ? 'portrait' : 'landscape',
+            )}
           />
           <PdfLabelPreview
-            widthMm={settings.label.widthMm}
-            heightMm={settings.label.heightMm}
+            widthMm={labelDesignWidth}
+            heightMm={labelDesignHeight}
             orientation={settings.label.orientation}
             rotateContent={settings.label.rotateContent}
             layout={activeLabelLayout}

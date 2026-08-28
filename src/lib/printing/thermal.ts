@@ -13,7 +13,15 @@ import {
   type PrintSize,
   type Orientation,
 } from './printSettings';
-import { buildDefaultLayout, type LabelElement, type LabelField, type LabelLayout } from './labelLayout';
+import {
+  buildDefaultLayout,
+  clampLayout,
+  elementHeightMm,
+  scaleLayout,
+  type LabelElement,
+  type LabelField,
+  type LabelLayout,
+} from './labelLayout';
 import { loadLabelCalibration } from './calibration';
 
 const COMPANY = {
@@ -38,15 +46,31 @@ const fmtFecha = (d?: string | Date) => {
 const openPdfPrint = (doc: jsPDF, title: string) => {
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
-  const w = window.open(url, '_blank', 'width=420,height=640');
-  if (!w) {
-    const a = document.createElement('a');
-    a.href = url; a.download = `${title}.pdf`; a.click();
-    return;
-  }
-  w.addEventListener('load', () => {
-    setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 250);
-  });
+
+  // Igual que las etiquetas: se imprime desde un iframe oculto para que el
+  // bloqueador de ventanas emergentes no impida la impresión.
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  iframe.src = url;
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {
+      // Si el visor PDF embebido no deja imprimir, se descarga el archivo.
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title}.pdf`;
+      a.click();
+    } finally {
+      window.setTimeout(() => {
+        iframe.remove();
+        URL.revokeObjectURL(url);
+      }, 60000);
+    }
+  };
+  document.body.appendChild(iframe);
 };
 
 const clipText = (doc: jsPDF, txt: string, maxW: number): string => {
@@ -194,8 +218,11 @@ export interface LabelData {
   /** Contenido a codificar en el QR. Si no se envía, se usa `numero`. */
   qrPayload?: string;
   paciente?: string;
+  /** Tipo de lente / descripción del producto. */
   descripcion?: string;
   laboratorio?: string;
+  /** Número con el que el laboratorio identifica la orden. */
+  numeroOrdenLab?: string;
   numeroMontura?: string;
   fechaEntrega?: string | Date;
   sede?: string;
@@ -225,11 +252,13 @@ const svgToPngDataUrl = (svg: string, sizePx: number): Promise<string> =>
 /** Resuelve el texto a imprimir para un campo del layout. */
 const fieldValue = (field: LabelField, data: LabelData, customText?: string): string => {
   switch (field) {
-    case 'numero':        return data.numero || '';
-    case 'paciente':      return data.paciente || '';
-    case 'descripcion':   return data.descripcion || '';
-    case 'laboratorio':   return data.laboratorio || '';
-    case 'numeroMontura': return data.numeroMontura || '';
+    case 'optica':          return COMPANY.nombre;
+    case 'numero':          return data.numero || '';
+    case 'paciente':        return data.paciente || '';
+    case 'descripcion':     return data.descripcion || '';
+    case 'laboratorio':     return data.laboratorio || '';
+    case 'numeroOrdenLab':  return data.numeroOrdenLab || '';
+    case 'numeroMontura':   return data.numeroMontura || '';
     case 'fechaEntrega':
       if (!data.fechaEntrega) return '';
       try {
@@ -251,6 +280,94 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
     img.onerror = reject;
     img.src = src;
   });
+
+const escapeHtml = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * Genera el QR como SVG de rectángulos SÓLIDOS con coordenadas enteras.
+ *
+ * El SVG que produce la librería dibuja el código con trazos (`stroke`)
+ * centrados en medio píxel; al rasterizarlo una impresora térmica de 203 ppp
+ * cada módulo cae a caballo entre dos puntos y se difumina en gris. Con
+ * rectángulos rellenos alineados a la rejilla, y `shape-rendering="crispEdges"`,
+ * cada módulo queda negro pleno.
+ */
+const qrToSvg = (texto: string): string => {
+  const qr = QRCode.create(texto, { errorCorrectionLevel: 'M' });
+  const size: number = (qr.modules as any).size;
+  const data: Uint8Array = (qr.modules as any).data;
+
+  const rects: string[] = [];
+  for (let fila = 0; fila < size; fila++) {
+    // Se agrupan los módulos contiguos de cada fila en un solo rectángulo:
+    // menos nodos y sin junturas visibles entre celdas.
+    let inicio = -1;
+    for (let col = 0; col <= size; col++) {
+      const activo = col < size && !!data[fila * size + col];
+      if (activo && inicio === -1) inicio = col;
+      if (!activo && inicio !== -1) {
+        rects.push(`<rect x="${inicio}" y="${fila}" width="${col - inicio}" height="1"/>`);
+        inicio = -1;
+      }
+    }
+  }
+
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" ` +
+    `preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" width="100%" height="100%">` +
+    `<rect width="${size}" height="${size}" fill="#fff"/>` +
+    `<g fill="#000">${rects.join('')}</g></svg>`
+  );
+};
+
+/**
+ * Renderiza el diseño como HTML VECTORIAL (texto real + QR en SVG).
+ *
+ * Antes la etiqueta se generaba como una imagen de mapa de bits y el
+ * controlador la reescalaba a los 203 ppp de la impresora, lo que la dejaba
+ * borrosa. Con texto y SVG, el controlador rasteriza a la resolución nativa y
+ * los trazos salen nítidos.
+ */
+const renderLayoutToHtml = async (
+  layout: LabelLayout,
+  data: LabelData,
+  designWmm: number,
+  designHmm: number,
+): Promise<string> => {
+  const partes: string[] = [];
+
+  for (const el of layout.elements) {
+    if (el.field === 'qr') {
+      let qrSvg = '';
+      try {
+        qrSvg = qrToSvg(data.qrPayload || data.numero || ' ');
+      } catch (e) {
+        console.error('QR render failed', e);
+        continue;
+      }
+      partes.push(
+        `<div class="el qr" style="left:${el.xMm}mm;top:${el.yMm}mm;width:${el.wMm}mm;height:${el.wMm}mm;">${qrSvg}</div>`,
+      );
+      continue;
+    }
+
+    const raw = fieldValue(el.field, data, el.text);
+    if (!raw) continue;
+    const txt = escapeHtml((el.prefix || '') + raw);
+    const align = el.align || 'left';
+    const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+    const alto = Math.max(2, el.fontSize * 0.5);
+
+    partes.push(
+      `<div class="el txt" style="left:${el.xMm}mm;top:${el.yMm}mm;width:${el.wMm}mm;height:${alto}mm;` +
+      `font-size:${el.fontSize}pt;font-weight:${el.bold ? 700 : 400};justify-content:${justify};">` +
+      `<span>${txt}</span></div>`,
+    );
+  }
+
+  return `<div class="design" style="width:${designWmm}mm;height:${designHmm}mm;">${partes.join('')}</div>`;
+};
 
 /** Renderiza el layout completo a un canvas (en pixeles) con el tamaño de diseño. */
 const renderLayoutToCanvas = async (
@@ -330,22 +447,50 @@ const resolveLabelPrint = (
   cfg: PrintSize,
   savedLayout?: LabelLayout,
 ): { pageW: number; pageH: number; contentW: number; contentH: number; rot: 0 | 90 | 180 | 270; layout: LabelLayout } => {
-  // WYSIWYG: el diseño usa EXACTAMENTE las dimensiones físicas del papel.
-  // Sin rotaciones automáticas — lo que ves en el diseñador es lo que sale.
-  // El checkbox "Rotar contenido 90°" sigue disponible para compensar drivers
-  // térmicos que rotan automáticamente.
-  const pageW = Math.max(10, cfg.widthMm);
-  const pageH = Math.max(10, cfg.heightMm);
+  // Ancho/alto configurados = medida física del papel tal como se carga en la
+  // impresora. La ORIENTACIÓN decide cómo se coloca la página:
+  //   vertical   → el lado mayor queda a lo alto
+  //   horizontal → el lado mayor queda a lo ancho
+  // Así el selector deja de ser decorativo: cambia de verdad la página enviada.
+  const w = Math.max(10, cfg.widthMm);
+  const h = Math.max(10, cfg.heightMm);
+  const long = Math.max(w, h);
+  const short = Math.min(w, h);
+  const pageW = cfg.orientation === 'landscape' ? long : short;
+  const pageH = cfg.orientation === 'landscape' ? short : long;
+
   const contentW = pageW;
   const contentH = pageH;
   const rot: 0 | 90 | 180 | 270 = cfg.rotateContent ? 90 : 0;
 
+  // El diseño se conserva siempre: si no cabe tras un cambio de tamaño se
+  // reescala y se encaja, en vez de descartarlo y volver al layout por defecto.
   const candidate = savedLayout?.elements?.length ? savedLayout : undefined;
-  const layout = candidate && layoutFits(candidate, contentW, contentH)
-    ? candidate
-    : buildDefaultLayout(contentW, contentH);
+  let layout: LabelLayout;
+  if (!candidate) {
+    layout = buildDefaultLayout(contentW, contentH);
+  } else if (layoutFits(candidate, contentW, contentH)) {
+    layout = candidate;
+  } else {
+    const bounds = layoutBounds(candidate);
+    const scaled = bounds.w > 0 && bounds.h > 0
+      ? scaleLayout(candidate, Math.max(bounds.w, contentW), Math.max(bounds.h, contentH), contentW, contentH)
+      : candidate;
+    layout = clampLayout(scaled, contentW, contentH);
+  }
 
   return { pageW, pageH, contentW, contentH, rot, layout };
+};
+
+/** Caja envolvente del diseño (mm), para reescalar sin perder proporciones. */
+const layoutBounds = (layout: LabelLayout): { w: number; h: number } => {
+  let w = 0;
+  let h = 0;
+  for (const el of layout.elements) {
+    w = Math.max(w, el.xMm + el.wMm);
+    h = Math.max(h, el.yMm + elementHeightMm(el));
+  }
+  return { w, h };
 };
 
 export const printThermalLabel = async (data: LabelData) => {
@@ -356,22 +501,28 @@ export const printThermalLabel = async (data: LabelData) => {
   const pad = calib.marginMm;
   const { pageW, pageH, contentW, contentH, rot, layout } = resolveLabelPrint(cfg, settings.labelLayout);
 
-  // El @page conserva SIEMPRE el tamaño físico (dW × dH).
-  // El diseño sí cambia a vertical/horizontal y luego se rota por CSS si el
-  // papel físico está en la dirección contraria; así no queda pegado arriba.
-  const PX_PER_MM = 12;
-  const designCanvas = await renderLayoutToCanvas(layout, data, contentW, contentH, PX_PER_MM);
-  const imgDataUrl = designCanvas.toDataURL('image/png');
-  openHtmlPrint(imgDataUrl, pageW, pageH, contentW, contentH, rot, pad, calib.offsetXMm, calib.offsetYMm, `Etiqueta ${data.numero}`);
+  // La página enviada mide siempre lo que mide la etiqueta: agrandarla haría
+  // que el controlador encogiera todo para encajarla. El diseño se dibuja a
+  // tamaño completo y la calibración sólo lo desplaza dentro de la página.
+  const contenido = await renderLayoutToHtml(layout, data, contentW, contentH);
+  openHtmlPrint(
+    contenido, pageW, pageH, contentW, contentH, rot, pad,
+    calib.offsetXMm, calib.offsetYMm, `Etiqueta ${data.numero}`,
+  );
 };
 
 /**
  * Abre una ventana HTML con `@page` al tamaño físico de la etiqueta y rota
  * el contenido por CSS (transform + transform-origin) sin tocar el papel.
- * El driver siempre recibe el mismo tamaño de página → no reescala.
+ *
+ * La página enviada mide SIEMPRE exactamente lo que mide la etiqueta. No debe
+ * agrandarse para compensar desfases mecánicos: el controlador de Windows
+ * tiene fijado el tamaño del medio y encogería toda la página para encajarla,
+ * con lo que el diseño saldría diminuto. El desfase se corrige moviendo el
+ * contenido dentro de la propia página (calibración X/Y).
  */
 const openHtmlPrint = (
-  imgDataUrl: string,
+  contenidoHtml: string,
   pageW: number,
   pageH: number,
   contentW: number,
@@ -382,15 +533,13 @@ const openHtmlPrint = (
   offsetYMm: number,
   title: string,
 ) => {
-  const w = window.open('', '_blank', 'width=420,height=640');
-  if (!w) return;
-
   // Bounding box después de rotar el contenido.
   const bboxW = (rot === 90 || rot === 270) ? contentH : contentW;
   const bboxH = (rot === 90 || rot === 270) ? contentW : contentH;
   const innerW = Math.max(1, pageW - padMm * 2);
   const innerH = Math.max(1, pageH - padMm * 2);
-  const scale = Math.min(innerW / bboxW, innerH / bboxH);
+  // Nunca se agranda: el diseño ya viene al tamaño de la etiqueta.
+  const scale = Math.min(1, innerW / bboxW, innerH / bboxH);
 
   const html = `<!doctype html>
 <html>
@@ -407,9 +556,17 @@ const openHtmlPrint = (
     background: #fff;
     overflow: hidden;
   }
+  .sheet {
+    position: relative;
+    width: ${pageW}mm;
+    height: ${pageH}mm;
+    overflow: hidden;
+  }
   .label {
     box-sizing: border-box;
-    position: relative;
+    position: absolute;
+    left: 0;
+    top: 0;
     display: block;
     width: ${pageW}mm;
     height: ${pageH}mm;
@@ -426,29 +583,104 @@ const openHtmlPrint = (
     transform-origin: center center;
     transform: rotate(${rot}deg) scale(${scale});
   }
-  .label .content img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    image-rendering: pixelated;
+  /* Contenido vectorial: texto real y QR en SVG (nada de mapas de bits). */
+  .design { position: relative; }
+  .el { position: absolute; overflow: hidden; }
+  .el.qr { line-height: 0; }
+  .el.qr svg { display: block; width: 100%; height: 100%; }
+  .el.txt {
+    display: flex;
+    align-items: center;
+    color: #000;
+    font-family: Helvetica, Arial, sans-serif;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .el.txt span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
   }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head>
 <body>
-  <div class="label"><div class="content"><img src="${imgDataUrl}" alt="" /></div></div>
-  <script>
-    window.addEventListener('load', function () {
-      var img = document.querySelector('img');
-      var go = function () { try { window.focus(); window.print(); } catch(e){} };
-      if (img && !img.complete) { img.addEventListener('load', function(){ setTimeout(go, 80); }); }
-      else { setTimeout(go, 80); }
-    });
-  </script>
+  <div class="sheet">
+    <div class="label"><div class="content">${contenidoHtml}</div></div>
+  </div>
 </body>
 </html>`;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+
+  printHtmlDocument(html, title);
+};
+
+/**
+ * Imprime un documento HTML sin depender de ventanas emergentes.
+ *
+ * Los navegadores bloquean `window.open` por defecto y antes eso hacía que la
+ * impresión fallara en silencio. Ahora se imprime desde un iframe oculto (que
+ * ningún bloqueador intercepta) y sólo si eso no fuera posible se recurre a una
+ * ventana nueva, avisando al usuario cuando también está bloqueada.
+ */
+export const printHtmlDocument = (html: string, title: string): void => {
+  try {
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(iframe);
+
+    const cleanup = () => {
+      window.setTimeout(() => iframe.remove(), 1000);
+    };
+
+    iframe.onload = () => {
+      const win = iframe.contentWindow;
+      if (!win) { cleanup(); return; }
+      const go = () => {
+        try {
+          win.focus();
+          win.print();
+        } catch {
+          /* el usuario cancela o el navegador rechaza: no hay nada que reintentar */
+        } finally {
+          cleanup();
+        }
+      };
+      const img = win.document.querySelector('img');
+      if (img && !img.complete) {
+        img.addEventListener('load', () => window.setTimeout(go, 80));
+        img.addEventListener('error', () => window.setTimeout(go, 80));
+      } else {
+        window.setTimeout(go, 80);
+      }
+    };
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) throw new Error('iframe sin documento');
+    doc.open();
+    doc.write(html);
+    doc.close();
+  } catch {
+    // Último recurso: ventana nueva (puede estar bloqueada por el navegador).
+    const w = window.open('', '_blank', 'width=420,height=640');
+    if (!w) {
+      notifyPrintBlocked();
+      return;
+    }
+    w.document.open();
+    w.document.write(html + `<script>window.addEventListener('load',function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},120)});<\/script>`);
+    w.document.close();
+  }
+};
+
+/** Aviso visible cuando el navegador impide abrir el diálogo de impresión. */
+const notifyPrintBlocked = () => {
+  const msg = 'El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.';
+  try {
+    window.dispatchEvent(new CustomEvent('cristaliris:print-blocked', { detail: msg }));
+  } catch { /* navegadores sin CustomEvent */ }
+  // eslint-disable-next-line no-alert
+  window.alert(msg);
 };
 

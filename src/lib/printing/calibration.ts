@@ -16,7 +16,10 @@ export interface LabelCalibration {
 }
 
 export const DEFAULT_LABEL_CALIBRATION: LabelCalibration = {
-  marginMm: 1,
+  // Sin margen: el diseño ocupa la etiqueta completa. Cualquier margen aquí
+  // encoge TODO el contenido (se reescala para caber en el área interior), y
+  // el espacio en blanco ya se decide colocando los elementos en el diseñador.
+  marginMm: 0,
   offsetXMm: 0,
   offsetYMm: 0,
 };

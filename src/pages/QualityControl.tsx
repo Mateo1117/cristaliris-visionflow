@@ -6,16 +6,32 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, XCircle, Eye, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, Eye, Clock, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { usePermissions } from '@/hooks/usePermissions';
+import { diasHabilesEntre, sellosDeFecha, useFestivos } from '@/lib/businessDays';
 import { toast } from 'sonner';
+
+/**
+ * Estado al que regresa un producto rechazado en control de calidad.
+ *
+ * Un rechazo ANTES de entregar es un REPROCESO INTERNO, no una garantía
+ * (README, Módulo 3.2: "Reproceso interno: error detectado antes de entregar
+ * al paciente"). Por eso el producto vuelve al laboratorio, se marca
+ * `es_reproceso` y se reinicia el conteo de tiempo de laboratorio, sin crear
+ * registro en `garantias` ni tocar `ciclo_garantia`.
+ */
+const ESTADO_REPROCESO = 'enviado_laboratorio';
 
 export default function QualityControl() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<any>(null);
   const [observaciones, setObservaciones] = useState('');
+  const { canWrite, isLoading: permisosCargando } = usePermissions();
+  const { festivos } = useFestivos();
+  const puedeEditar = permisosCargando || canWrite('control-calidad');
 
   const { data: productos = [], isLoading } = useQuery({
     queryKey: ['qc-productos'],
@@ -31,10 +47,24 @@ export default function QualityControl() {
   });
 
   const updateState = useMutation({
-    mutationFn: async ({ id, newState, oldState, obs }: { id: string; newState: string; oldState: string; obs: string }) => {
+    mutationFn: async ({ id, newState, oldState, obs, reproceso }: { id: string; newState: string; oldState: string; obs: string; reproceso?: boolean }) => {
       const { data: { user } } = await supabase.auth.getUser();
+      const ahora = new Date();
+
+      const cambios: Record<string, any> = {
+        observaciones: obs || null,
+        estado_actual: newState,
+        // Sella la fecha del ciclo correspondiente al estado alcanzado.
+        ...sellosDeFecha(newState, ahora),
+      };
+      if (reproceso) {
+        // Reproceso interno: NO es garantía. Reinicia el conteo de laboratorio.
+        cambios.es_reproceso = true;
+        cambios.fecha_envio_lab = ahora.toISOString();
+      }
+
       const { error: e1 } = await supabase.from('orden_productos')
-        .update({ estado_actual: newState as any, observaciones: obs || null, fecha_control_calidad: new Date().toISOString() })
+        .update(cambios as any)
         .eq('id', id);
       if (e1) throw e1;
 
@@ -47,60 +77,52 @@ export default function QualityControl() {
         usuario_id: user?.id || null,
       });
       if (e2) throw e2;
+
+      return { reproceso: !!reproceso };
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['qc-productos'] });
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      queryClient.invalidateQueries({ queryKey: ['alertas-produccion-lab'] });
       setSelected(null);
       setObservaciones('');
+      if (res?.reproceso) {
+        toast.error('Producto rechazado — devuelto a laboratorio como reproceso interno');
+      }
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message || 'No se pudo actualizar el estado'),
   });
 
   const handleApprove = () => {
     if (!selected) return;
+    if (!puedeEditar) { toast.error('No tiene permisos para aprobar en control de calidad'); return; }
     updateState.mutate({
       id: selected.id,
       newState: 'listo_entrega',
       oldState: selected.estado_actual,
       obs: observaciones,
+    }, {
+      onSuccess: () => toast.success('Producto aprobado — listo para entrega'),
     });
-    toast.success('Producto aprobado — listo para entrega');
   };
 
-  const handleReject = async () => {
+  /**
+   * Rechazo en control de calidad = REPROCESO INTERNO (no garantía).
+   * El error se detectó ANTES de entregar al paciente, así que no se crea
+   * registro en `garantias` ni se incrementa `ciclo_garantia`.
+   */
+  const handleReject = () => {
     if (!selected) return;
+    if (!puedeEditar) { toast.error('No tiene permisos para rechazar en control de calidad'); return; }
     if (!observaciones.trim()) { toast.error('Debe ingresar observaciones para rechazar'); return; }
-    
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Create warranty record for rejected product
-    const cicloActual = (selected.ciclo_garantia || 0) + 1;
-    const subcodigo = `${selected.orden_id.slice(0, 8)}-G${cicloActual}`;
-    
-    const { error: errGarantia } = await supabase.from('garantias').insert({
-      orden_producto_id: selected.id,
-      motivo: observaciones,
-      subcodigo,
-      ciclo: cicloActual,
-      laboratorio_id: selected.laboratorio_id,
-      estado: 'solicitada',
-      observaciones: `Rechazado en control de calidad: ${observaciones}`,
-    });
-    if (errGarantia) { toast.error('Error creando garantía: ' + errGarantia.message); return; }
-
-    // Mark product as warranty + update cycle
-    await supabase.from('orden_productos')
-      .update({ es_garantia: true, ciclo_garantia: cicloActual, garantia_codigo: subcodigo })
-      .eq('id', selected.id);
 
     updateState.mutate({
       id: selected.id,
-      newState: 'pedido_creado',
+      newState: ESTADO_REPROCESO,
       oldState: selected.estado_actual,
-      obs: `RECHAZADO → Garantía ${subcodigo}: ${observaciones}`,
+      obs: `RECHAZADO EN CONTROL DE CALIDAD (reproceso interno): ${observaciones.trim()}`,
+      reproceso: true,
     });
-    toast.error('Producto rechazado — garantía creada para seguimiento');
   };
 
   const pendientes = productos.filter((p: any) => p.estado_actual === 'recibido_optica');
@@ -134,10 +156,10 @@ export default function QualityControl() {
             <AlertTriangle className="h-8 w-8 text-destructive" />
             <div>
               <p className="text-2xl font-bold">{productos.filter((p: any) => {
-                const dias = Math.floor((Date.now() - new Date(p.updated_at).getTime()) / 86400000);
+                const dias = diasHabilesEntre(p.updated_at, new Date(), festivos);
                 return dias > (p.laboratorios?.tiempo_promedio_entrega || 3);
               }).length}</p>
-              <p className="text-xs text-muted-foreground">Con retraso</p>
+              <p className="text-xs text-muted-foreground">Con retraso (días hábiles)</p>
             </div>
           </CardContent>
         </Card>
@@ -151,7 +173,8 @@ export default function QualityControl() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {productos.map((p: any) => {
             const paciente = p.ordenes?.pacientes;
-            const dias = Math.floor((Date.now() - new Date(p.updated_at).getTime()) / 86400000);
+            // Días HÁBILES en el estado actual (lun-vie, sin festivos) — README 3.4.
+            const dias = Math.max(0, diasHabilesEntre(p.updated_at, new Date(), festivos));
             const excedido = dias > (p.laboratorios?.tiempo_promedio_entrega || 3);
 
             return (
@@ -170,7 +193,7 @@ export default function QualityControl() {
                   <div className="flex items-center justify-between text-xs">
                     <span>Lab: {p.laboratorios?.nombre || 'N/A'}</span>
                     <span className={excedido ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-                      {dias}d en estado
+                      {dias} d. hábiles en estado
                     </span>
                   </div>
                 </CardContent>
@@ -197,11 +220,20 @@ export default function QualityControl() {
                 {selected.es_reproceso && <Badge variant="outline" className="text-red-600">Reproceso</Badge>}
               </div>
 
+              {!puedeEditar && (
+                <p className="text-xs text-muted-foreground">
+                  Solo lectura: no tiene permisos para registrar el control de calidad.
+                </p>
+              )}
+
               {selected.estado_actual === 'recibido_optica' && (
                 <Button className="w-full" onClick={() => {
-                  updateState.mutate({ id: selected.id, newState: 'control_calidad', oldState: selected.estado_actual, obs: '' });
-                  toast.success('Producto pasado a control de calidad');
-                }} disabled={updateState.isPending}>
+                  if (!puedeEditar) { toast.error('No tiene permisos para iniciar la revisión'); return; }
+                  updateState.mutate(
+                    { id: selected.id, newState: 'control_calidad', oldState: selected.estado_actual, obs: '' },
+                    { onSuccess: () => toast.success('Producto pasado a control de calidad') },
+                  );
+                }} disabled={updateState.isPending || !puedeEditar}>
                   <Eye className="h-4 w-4 mr-1" />Iniciar Revisión
                 </Button>
               )}
@@ -213,11 +245,19 @@ export default function QualityControl() {
                     <Textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)}
                       placeholder="Ej: Lente con graduación correcta, acabado en buen estado..." rows={3} />
                   </div>
+                  <div className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground flex gap-2">
+                    <RotateCcw className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>
+                      Al rechazar, el producto vuelve al laboratorio como <strong>reproceso interno</strong>
+                      {' '}(el error se detectó antes de entregar). Las garantías solo aplican
+                      después de la entrega, desde el módulo de Garantías.
+                    </span>
+                  </div>
                   <div className="flex gap-2">
-                    <Button className="flex-1" variant="destructive" onClick={handleReject} disabled={updateState.isPending}>
+                    <Button className="flex-1" variant="destructive" onClick={handleReject} disabled={updateState.isPending || !puedeEditar}>
                       <XCircle className="h-4 w-4 mr-1" />Rechazar
                     </Button>
-                    <Button className="flex-1" onClick={handleApprove} disabled={updateState.isPending}>
+                    <Button className="flex-1" onClick={handleApprove} disabled={updateState.isPending || !puedeEditar}>
                       <CheckCircle2 className="h-4 w-4 mr-1" />Aprobar
                     </Button>
                   </div>

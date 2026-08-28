@@ -7,11 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ESTADOS_PRODUCTO } from '@/types';
+import { Textarea } from '@/components/ui/textarea';
+import { ESTADOS_PRODUCTO, type EstadoProducto } from '@/types';
 import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { QrCode, ChevronRight, RotateCcw, CheckCircle2, Loader2, Search, Minus, Plus, Package, ShoppingCart } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
+import { esEstadoLaboratorio, esRetroceso, sellosDeFecha, siguienteEstado } from '@/lib/businessDays';
+import { QrCode, ChevronRight, RotateCcw, CheckCircle2, Loader2, Search, Minus, Plus, Package, ShoppingCart, AlertTriangle } from 'lucide-react';
 
 type ScanMode = 'idle' | 'order' | 'inventory';
 type InvStep = 'view' | 'select-order' | 'done';
@@ -45,9 +48,13 @@ interface OrderOption {
 }
 
 export default function ScanQR() {
+  const { isAdmin, canWrite, isLoading: permisosCargando } = usePermissions();
   const [scanning, setScanning] = useState(false);
   const [mode, setMode] = useState<ScanMode>('idle');
   const [product, setProduct] = useState<ScannedProduct | null>(null);
+  // Estado destino elegido y justificación (obligatoria si sale del flujo lógico)
+  const [targetState, setTargetState] = useState<EstadoProducto | ''>('');
+  const [justificacion, setJustificacion] = useState('');
   const [invItem, setInvItem] = useState<ScannedInventory | null>(null);
   const [updating, setUpdating] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -66,6 +73,8 @@ export default function ScanQR() {
     setInvItem(null);
     setSuccess(false);
     setMode('idle');
+    setTargetState('');
+    setJustificacion('');
     setAdjustQty(1);
     setInvStep('view');
     setPendingDelta(0);
@@ -123,7 +132,7 @@ export default function ScanQR() {
       .select('id, descripcion, estado_actual, tipo_producto, laboratorios(nombre), ordenes(pacientes(nombres, apellidos))')
       .eq('id', id)
       .single();
-    if (error || !data) { toast.error('Producto no encontrado'); return; }
+    if (error || !data) { toast.error(error?.message || 'Producto no encontrado'); return; }
     setMode('order');
     setProduct({
       id: data.id, descripcion: data.descripcion, estado_actual: data.estado_actual,
@@ -131,6 +140,9 @@ export default function ScanQR() {
       paciente_nombre: `${(data as any).ordenes?.pacientes?.nombres || ''} ${(data as any).ordenes?.pacientes?.apellidos || ''}`.trim(),
       laboratorio_nombre: (data as any).laboratorios?.nombre || 'N/A',
     });
+    // Por defecto se propone el paso lógico siguiente del flujo.
+    setTargetState(siguienteEstado(data.estado_actual)?.key ?? '');
+    setJustificacion('');
   };
 
   const fetchInventory = async (id: string) => {
@@ -203,7 +215,7 @@ export default function ScanQR() {
 
       // Log movement
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('movimientos_inventario').insert({
+      const { error: eMov } = await supabase.from('movimientos_inventario').insert({
         inventario_id: invItem.id,
         tipo_movimiento: 'salida',
         cantidad: Math.abs(pendingDelta),
@@ -213,6 +225,7 @@ export default function ScanQR() {
         orden_producto_id: selectedProductoId || null,
         usuario_id: user?.id || null,
       });
+      if (eMov) throw eMov;
 
       // Link to order product if selected
       if (selectedProductoId) {
@@ -243,7 +256,7 @@ export default function ScanQR() {
       const { error } = await supabase.from('inventario').update({ cantidad_disponible: newQty }).eq('id', invItem.id);
       if (error) throw error;
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('movimientos_inventario').insert({
+      const { error: eMov } = await supabase.from('movimientos_inventario').insert({
         inventario_id: invItem.id,
         tipo_movimiento: 'entrada',
         cantidad: qty,
@@ -252,6 +265,7 @@ export default function ScanQR() {
         motivo: 'Ingreso via QR',
         usuario_id: user?.id || null,
       });
+      if (eMov) throw eMov;
       setInvItem(prev => prev ? { ...prev, cantidad_disponible: newQty } : null);
       setSuccess(true);
       setInvStep('done');
@@ -263,40 +277,79 @@ export default function ScanQR() {
     }
   };
 
-  // Order state
-  const getNextState = () => {
-    if (!product) return null;
-    const idx = ESTADOS_PRODUCTO.findIndex(e => e.key === product.estado_actual);
-    return idx >= 0 && idx < ESTADOS_PRODUCTO.length - 1 ? ESTADOS_PRODUCTO[idx + 1] : null;
-  };
+  // ── Cambio de estado por QR ────────────────────────────────────────────────
+  const nextState = product ? siguienteEstado(product.estado_actual) : null;
+  const targetLabel = ESTADOS_PRODUCTO.find(e => e.key === targetState)?.label || '';
+  /** El estado elegido no es el paso lógico siguiente (README 3.2). */
+  const fueraDeSecuencia = !!product && !!targetState && targetState !== nextState?.key;
+  const esRetrocesoQR = !!product && !!targetState && esRetroceso(product.estado_actual, targetState);
+  const necesitaJustificacion = fueraDeSecuencia || esRetrocesoQR;
 
-  const advanceState = async () => {
-    if (!product) return;
-    const next = getNextState();
-    if (!next) return;
+  /**
+   * Registra el estado escaneado. Si no corresponde al paso lógico siguiente
+   * NO se bloquea: se exige justificación y se deja todo en `estados_producto`.
+   * El retroceso sí queda reservado al administrador (README 3.2).
+   */
+  const registrarEstado = async () => {
+    if (!product || !targetState) return;
+    if (permisosCargando) { toast.info('Cargando permisos, intente de nuevo en un momento'); return; }
+    if (!canWrite('scan')) { toast.error('No tiene permisos para cambiar estados'); return; }
+    if (targetState === product.estado_actual) { toast.error('El producto ya está en ese estado'); return; }
+    if (esRetrocesoQR && !isAdmin) { toast.error('Solo un administrador puede retroceder estados'); return; }
+    if (necesitaJustificacion && justificacion.trim().length < 5) {
+      toast.error('Debe registrar una justificación para este cambio fuera de secuencia');
+      return;
+    }
+
     setUpdating(true);
     try {
-      const { error: e1 } = await supabase.from('orden_productos').update({ estado_actual: next.key as any }).eq('id', product.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      const ahora = new Date();
+
+      // Reproceso interno: se devuelve desde control de calidad al laboratorio.
+      const esReproceso = esRetrocesoQR
+        && product.estado_actual === 'control_calidad'
+        && esEstadoLaboratorio(targetState);
+
+      const cambios: Record<string, any> = {
+        estado_actual: targetState,
+        // Sella la fecha del ciclo correspondiente al estado alcanzado.
+        ...sellosDeFecha(targetState, ahora),
+      };
+      if (esReproceso) {
+        cambios.es_reproceso = true;
+        cambios.fecha_envio_lab = ahora.toISOString();
+      }
+
+      const { error: e1 } = await supabase.from('orden_productos').update(cambios as any).eq('id', product.id);
       if (e1) throw e1;
+
       const { error: e2 } = await supabase.from('estados_producto').insert({
         orden_producto_id: product.id,
         estado_anterior: product.estado_actual as any,
-        estado_nuevo: next.key as any,
-        metodo: 'qr_scan',
+        estado_nuevo: targetState as any,
+        metodo: esRetrocesoQR ? 'admin_retroceso' : 'qr_scan',
+        justificacion: necesitaJustificacion ? justificacion.trim() : null,
+        usuario_id: user?.id || null,
       });
       if (e2) throw e2;
-      setProduct(prev => prev ? { ...prev, estado_actual: next.key } : null);
+
+      setProduct(prev => prev ? { ...prev, estado_actual: targetState } : null);
+      setJustificacion('');
       setSuccess(true);
-      toast.success(`Estado actualizado a: ${next.label}`);
+      toast.success(
+        esReproceso
+          ? `Estado actualizado a: ${targetLabel} — marcado como reproceso interno`
+          : `Estado actualizado a: ${targetLabel}`,
+      );
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error(err.message || 'No se pudo actualizar el estado');
     } finally {
       setUpdating(false);
     }
   };
 
   const currentLabel = product ? ESTADOS_PRODUCTO.find(e => e.key === product.estado_actual)?.label : '';
-  const nextState = getNextState();
   const showInitial = !scanning && mode === 'idle';
 
   return (
@@ -344,13 +397,69 @@ export default function ScanQR() {
                   <p className="text-sm font-medium">Estado actualizado correctamente</p>
                   <Button onClick={resetAll} variant="outline"><RotateCcw className="h-4 w-4 mr-1" />Escanear Otro</Button>
                 </div>
-              ) : nextState ? (
-                <Button onClick={advanceState} disabled={updating} className="w-full">
-                  {updating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ChevronRight className="h-4 w-4 mr-1" />}
-                  Avanzar a: {nextState.label}
-                </Button>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-2">Este producto ya está en su estado final.</p>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Registrar estado</Label>
+                    <Select value={targetState} onValueChange={(v) => setTargetState(v as EstadoProducto)}>
+                      <SelectTrigger><SelectValue placeholder="Seleccione el estado" /></SelectTrigger>
+                      <SelectContent>
+                        {ESTADOS_PRODUCTO.filter(e => e.key !== product.estado_actual).map(e => (
+                          <SelectItem key={e.key} value={e.key}>
+                            {e.label}{e.key === nextState?.key ? ' — siguiente paso' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {fueraDeSecuencia && (
+                    <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs space-y-1">
+                      <p className="flex items-center gap-1 font-medium text-warning">
+                        <AlertTriangle className="h-4 w-4" />Escaneo fuera de secuencia
+                      </p>
+                      <p>
+                        Estado actual: <strong>{currentLabel}</strong> · Esperado:{' '}
+                        <strong>{nextState?.label || 'ninguno (estado final)'}</strong> · Registrando:{' '}
+                        <strong>{targetLabel}</strong>
+                      </p>
+                    </div>
+                  )}
+
+                  {esRetrocesoQR && (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+                      {isAdmin
+                        ? 'Retroceso de estado: quedará registrado como admin_retroceso con su justificación.'
+                        : 'Solo un administrador puede retroceder estados.'}
+                    </div>
+                  )}
+
+                  {necesitaJustificacion && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Justificación *</Label>
+                      <Textarea
+                        rows={2}
+                        value={justificacion}
+                        onChange={(e) => setJustificacion(e.target.value)}
+                        placeholder="Explique por qué se registra este estado fuera de secuencia..."
+                      />
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={registrarEstado}
+                    disabled={updating || !targetState || (esRetrocesoQR && !isAdmin)}
+                    className="w-full"
+                    variant={necesitaJustificacion ? 'destructive' : 'default'}
+                  >
+                    {updating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ChevronRight className="h-4 w-4 mr-1" />}
+                    {targetState ? `Registrar: ${targetLabel}` : 'Seleccione un estado'}
+                  </Button>
+
+                  {!nextState && (
+                    <p className="text-xs text-muted-foreground text-center">Este producto ya está en su estado final.</p>
+                  )}
+                </div>
               )}
               {!success && (
                 <div className="flex gap-2">

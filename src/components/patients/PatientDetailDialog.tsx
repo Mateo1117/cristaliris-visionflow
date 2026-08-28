@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { User, Eye, FileText, Plus, Phone, Mail, MapPin, Building2, Calendar } from 'lucide-react';
+import { calcularEdad, formatearFechaColombia } from './patientUtils';
 
 interface Props {
   paciente: any | null;
@@ -89,9 +90,9 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
 
   if (!paciente) return null;
 
-  const edad = paciente.fecha_nacimiento
-    ? Math.floor((Date.now() - new Date(paciente.fecha_nacimiento).getTime()) / (365.25 * 86400000))
-    : null;
+  // Años cumplidos sobre la fecha civil colombiana (misma función en todo el
+  // módulo): el cálculo con 365,25 días se desviaba en años bisiestos.
+  const edad = calcularEdad(paciente.fecha_nacimiento);
 
   return (
     <>
@@ -114,7 +115,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
             <TabsContent value="datos" className="space-y-4 mt-4">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <InfoField icon={<FileText className="h-3.5 w-3.5" />} label="Documento" value={`${paciente.tipo_documento} ${paciente.numero_documento}`} />
-                <InfoField icon={<Calendar className="h-3.5 w-3.5" />} label="Fecha Nacimiento" value={paciente.fecha_nacimiento ? `${new Date(paciente.fecha_nacimiento).toLocaleDateString('es-CO')} (${edad} años)` : '—'} />
+                <InfoField icon={<Calendar className="h-3.5 w-3.5" />} label="Fecha Nacimiento" value={paciente.fecha_nacimiento ? `${formatearFechaColombia(paciente.fecha_nacimiento)}${edad !== null ? ` (${edad} años)` : ''}` : '—'} />
                 <InfoField label="Género" value={paciente.genero === 'M' ? 'Masculino' : paciente.genero === 'F' ? 'Femenino' : paciente.genero || '—'} />
                 <InfoField icon={<Phone className="h-3.5 w-3.5" />} label="Teléfono" value={paciente.telefono || '—'} />
                 <InfoField icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={paciente.email || '—'} />
@@ -125,7 +126,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                 <InfoField label="Modalidad Pago" value={paciente.modalidad_pago ? paciente.modalidad_pago.charAt(0).toUpperCase() + paciente.modalidad_pago.slice(1) : '—'} />
                 <InfoField label="Sede Registro" value={paciente.sedes?.nombre || '—'} />
                 <InfoField label="Referido por" value={paciente.referido_por || '—'} />
-                <InfoField label="Registrado" value={new Date(paciente.created_at).toLocaleDateString('es-CO')} />
+                <InfoField label="Registrado" value={formatearFechaColombia(paciente.created_at)} />
               </div>
               {paciente.modalidad_pago === 'nomina' && paciente.empleado_titular_nombre && (
                 <Card>
@@ -175,7 +176,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <Badge variant="outline">{new Date(h.fecha_consulta).toLocaleDateString('es-CO')}</Badge>
+                            <Badge variant="outline">{formatearFechaColombia(h.fecha_consulta)}</Badge>
                             {h.codigo_cie10 && <Badge variant="secondary" className="text-[10px]">CIE-10: {h.codigo_cie10}</Badge>}
                           </div>
                         </div>
@@ -207,7 +208,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye className="h-5 w-5 text-primary" />
-              Consulta — {viewRecord && new Date(viewRecord.fecha_consulta).toLocaleDateString('es-CO')}
+              Consulta — {viewRecord && formatearFechaColombia(viewRecord.fecha_consulta)}
             </DialogTitle>
           </DialogHeader>
           {viewRecord && (

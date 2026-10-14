@@ -12,9 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Eye, Printer } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { RESULTADO_LABEL } from '@/lib/flujoAtencion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { PacienteSelector } from '@/components/patients/PacienteSelector';
+import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
 import { hoyColombia, toFechaColombia } from '@/lib/businessDays';
 import { calcularEdad } from '@/components/patients/patientUtils';
 import { printHtmlDocument } from '@/lib/printing/thermal';
@@ -138,7 +142,20 @@ export default function ClinicalRecords() {
   const [search, setSearch] = useState('');
   const [selectedPaciente, setSelectedPaciente] = useState<string | null>(null);
   const [viewRecord, setViewRecord] = useState<any>(null);
+  /** Cita desde la que la optómetra abrió la consulta (Agenda → "Atender"). */
+  const [citaId, setCitaId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // /historias?nueva=1&paciente=…&cita=…  abre la consulta con el paciente cargado.
+  useEffect(() => {
+    if (params.get('nueva') !== '1') return;
+    setSelectedPaciente(params.get('paciente'));
+    setCitaId(params.get('cita'));
+    setShowForm(true);
+    setParams({}, { replace: true });
+  }, [params, setParams]);
 
   const { data: historias = [], isLoading } = useQuery({
     queryKey: ['historias'],
@@ -152,19 +169,7 @@ export default function ClinicalRecords() {
     },
   });
 
-  const { data: pacientes = [] } = useQuery({
-    queryKey: ['pacientes-select'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('pacientes')
-        .select('id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por')
-        .order('nombres');
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const pacienteSeleccionado = pacientes.find((p: any) => p.id === selectedPaciente);
+  const { data: pacienteSeleccionado } = usePacienteSeleccionado(selectedPaciente, 'id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por');
   const edadSeleccionado = calcularEdad(pacienteSeleccionado?.fecha_nacimiento);
 
   const num = (v: any) => (v !== undefined && v !== '' && v !== null ? parseFloat(v) : null);
@@ -172,8 +177,13 @@ export default function ClinicalRecords() {
 
   const createHistoria = useMutation({
     mutationFn: async (formData: Record<string, any>) => {
+      const { data: { user } } = await supabase.auth.getUser();
       const payload: any = {
         paciente_id: formData.paciente_id,
+        // Quién atendió: antes la historia no lo guardaba.
+        optometra_id: user?.id ?? null,
+        // Al guardar, la cita queda "atendida" y el paciente pasa a "Por facturar".
+        ...(citaId ? { cita_id: citaId } : {}),
         anamnesis: formData.anamnesis,
         antecedentes: formData.antecedentes,
         ocupacion: leerDatosPaciente(formData).ocupacion || null,
@@ -222,11 +232,15 @@ export default function ClinicalRecords() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['historias'] });
+      queryClient.invalidateQueries({ queryKey: ['citas'] });
+      queryClient.invalidateQueries({ queryKey: ['por-facturar'] });
       queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-      queryClient.invalidateQueries({ queryKey: ['pacientes-select'] });
+      queryClient.invalidateQueries({ queryKey: ['paciente-seleccionado'] });
       setShowForm(false);
       setSelectedPaciente(null);
-      toast.success('Historia clínica creada exitosamente');
+      toast.success('Historia clínica guardada', { description: 'El paciente pasó a "Por facturar".' });
+      // Si la consulta empezó en la agenda, la optómetra vuelve a su agenda.
+      if (citaId) { setCitaId(null); navigate('/agenda'); }
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -271,14 +285,15 @@ export default function ClinicalRecords() {
               <TableHead className="hidden lg:table-cell">OD Esf/Cil/Eje</TableHead>
               <TableHead className="hidden lg:table-cell">OI Esf/Cil/Eje</TableHead>
               <TableHead>CIE-10</TableHead>
+              <TableHead className="hidden md:table-cell">Resultado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Cargando...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay historias clínicas{search ? ' que coincidan' : ''}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hay historias clínicas{search ? ' que coincidan' : ''}</TableCell></TableRow>
             ) : filtered.map((h: any) => (
               <TableRow key={h.id} className="hover:bg-muted/50">
                 <TableCell className="text-sm cursor-pointer" onClick={() => setViewRecord(h)}>{formatFechaCO(h.fecha_consulta)}</TableCell>
@@ -287,6 +302,11 @@ export default function ClinicalRecords() {
                 <TableCell className="hidden lg:table-cell text-sm">{h.formula_od_esfera ?? '—'}/{h.formula_od_cilindro ?? '—'}/{h.formula_od_eje ?? '—'}</TableCell>
                 <TableCell className="hidden lg:table-cell text-sm">{h.formula_oi_esfera ?? '—'}/{h.formula_oi_cilindro ?? '—'}/{h.formula_oi_eje ?? '—'}</TableCell>
                 <TableCell><Badge variant="outline" className="text-[10px]">{h.codigo_cie10 || '—'}</Badge></TableCell>
+                <TableCell className="hidden md:table-cell">
+                  {h.estado_facturacion
+                    ? <Badge variant={h.estado_facturacion === 'orden' ? 'default' : 'outline'} className="text-[10px]">{RESULTADO_LABEL[h.estado_facturacion]}</Badge>
+                    : <span className="text-xs text-muted-foreground">—</span>}
+                </TableCell>
                 <TableCell className="text-right">
                   <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); imprimirFormula(h); }}>
                     <Printer className="h-3 w-3 mr-1" />Fórmula
@@ -407,7 +427,7 @@ export default function ClinicalRecords() {
       </Dialog>
 
       {/* Form Dialog */}
-      <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) setSelectedPaciente(null); }}>
+      <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) { setSelectedPaciente(null); setCitaId(null); } }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nueva Historia Clínica</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit}>
@@ -423,14 +443,7 @@ export default function ClinicalRecords() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="space-y-2 md:col-span-2">
                     <Label>Paciente *</Label>
-                    <Select onValueChange={setSelectedPaciente}>
-                      <SelectTrigger><SelectValue placeholder="Seleccione paciente" /></SelectTrigger>
-                      <SelectContent>
-                        {pacientes.map((p: any) => (
-                          <SelectItem key={p.id} value={p.id}>{p.tipo_documento} {p.numero_documento} — {p.nombres} {p.apellidos}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <PacienteSelector disabled={!!citaId} value={selectedPaciente} onChange={(id) => setSelectedPaciente(id || null)} columnas="id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por" />
                   </div>
                   <div className="space-y-2">
                     <Label>Edad</Label>

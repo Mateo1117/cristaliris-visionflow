@@ -9,10 +9,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, MoreVertical, MapPin } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, MoreVertical, MapPin, LogIn, Stethoscope, CheckCircle2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
+import { ESTADO_CITA_COLOR, ESTADO_CITA_LABEL, ESTADOS_CITA_MANUALES } from '@/lib/flujoAtencion';
 import { DoctorScheduleManager } from '@/components/schedule/DoctorScheduleManager';
 import { NuevaCitaDialog, type PrefijoCita } from '@/components/schedule/NuevaCitaDialog';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -20,17 +26,8 @@ import { toast } from 'sonner';
 import { aHoraCorta, hoyEnColombia, sumarDias } from '@/lib/agendaGrid';
 import { DIAS_SEMANA, calcularTurnos, diaDeSemana, type BloqueHorario } from '@/lib/disponibilidad';
 
-const estadoColor: Record<string, string> = {
-  agendada: 'bg-info/20 text-info border-info/30',
-  confirmada: 'bg-primary/20 text-primary border-primary/30',
-  asistio: 'bg-success/20 text-success border-success/30',
-  no_asistio: 'bg-destructive/20 text-destructive border-destructive/30',
-  cancelada: 'bg-muted text-muted-foreground border-muted line-through',
-};
-
-const estadoLabel: Record<string, string> = {
-  agendada: 'Agendada', confirmada: 'Confirmada', asistio: 'Asistió', no_asistio: 'No Asistió', cancelada: 'Cancelada',
-};
+const estadoColor = ESTADO_CITA_COLOR;
+const estadoLabel = ESTADO_CITA_LABEL;
 
 const SIN_ASIGNAR = 'sin-asignar';
 const TODAS = 'todas';
@@ -47,6 +44,15 @@ export default function Agenda() {
   const [prefijo, setPrefijo] = useState<PrefijoCita | null>(null);
   const [showScheduleFor, setShowScheduleFor] = useState<{ userId: string; nombre: string } | null>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { role, canWrite, canView } = usePermissions();
+  const esOptometra = role === 'optometra';
+  // La optómetra entra viendo solo sus pacientes; puede quitar el filtro.
+  const [soloMias, setSoloMias] = useState(false);
+  useEffect(() => { if (esOptometra) setSoloMias(true); }, [esOptometra]);
+  const puedeAgendar = canWrite('agenda');
+  const puedeAtender = canView('historias') && (role === 'admin' || role === 'optometra');
 
   const { data: citas = [] } = useQuery({
     queryKey: ['citas', fecha],
@@ -92,17 +98,36 @@ export default function Agenda() {
   });
 
   const cambiarEstado = useMutation({
-    mutationFn: async ({ id, estado }: { id: string; estado: string }) => {
-      const { error } = await supabase.from('citas').update({ estado }).eq('id', id);
-      if (error) throw error;
+    mutationFn: async ({ id, estado }: { id: string; estado: string; silencioso?: boolean }) => {
+      const cambios: Record<string, unknown> = { estado };
+      if (estado === 'en_espera') cambios.hora_llegada = new Date().toISOString();
+      const { error } = await supabase.from('citas').update(cambios as any).eq('id', id);
+      if (error) {
+        if (error.code === '23514' || error.code === 'PGRST204') {
+          throw new Error('Falta aplicar la migración del flujo de atención (20261014000000) para usar este estado.');
+        }
+        throw error;
+      }
     },
-    onSuccess: (_, { estado }) => {
+    onSuccess: (_, { estado, silencioso }) => {
       queryClient.invalidateQueries({ queryKey: ['citas'] });
       queryClient.invalidateQueries({ queryKey: ['citas-ocupacion'] });
-      toast.success(`Cita marcada como ${estadoLabel[estado].toLowerCase()}`);
+      if (!silencioso) toast.success(estado === 'en_espera' ? 'Paciente en sala de espera' : `Cita: ${estadoLabel[estado].toLowerCase()}`);
     },
     onError: (e: any) => toast.error(e.message),
   });
+
+  /** La optómetra toma al paciente: la cita pasa a "en consulta" y se abre su historia clínica. */
+  const atender = async (cita: any) => {
+    if (cita.estado !== 'en_consulta') {
+      try {
+        await cambiarEstado.mutateAsync({ id: cita.id, estado: 'en_consulta', silencioso: true });
+      } catch {
+        return;
+      }
+    }
+    navigate(`/historias?nueva=1&paciente=${cita.paciente_id}&cita=${cita.id}`);
+  };
 
   const changeDate = (days: number) => setFecha(sumarDias(fecha, days));
   const esPasado = fecha < today;
@@ -124,6 +149,10 @@ export default function Agenda() {
       ? (() => { const co = new Date(Date.now() - 5 * 3600 * 1000); return co.getUTCHours() * 60 + co.getUTCMinutes(); })()
       : 0;
 
+    if (soloMias && user?.id) {
+      for (const id of [...ids]) if (id !== user.id) ids.delete(id);
+    }
+
     return [...ids].map((id) => {
       const propias = citasSede.filter((c: any) => (c.optometra_id ?? SIN_ASIGNAR) === id);
       const libres = id === SIN_ASIGNAR || esPasado ? [] : calcularTurnos({
@@ -136,7 +165,18 @@ export default function Agenda() {
       const activas = propias.filter((c: any) => !['cancelada', 'no_asistio'].includes(c.estado)).length;
       return { id, nombre: id === SIN_ASIGNAR ? 'Sin asignar' : nombreMedico(id), filas, activas, libres: libres.length };
     }).sort((a, b) => (a.id === SIN_ASIGNAR ? 1 : b.id === SIN_ASIGNAR ? -1 : a.nombre.localeCompare(b.nombre)));
-  }, [citas, horarios, dia, sedeFiltro, fecha, today, esPasado, optometras]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [citas, horarios, dia, sedeFiltro, fecha, today, esPasado, optometras, soloMias, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resumen del flujo del día (todas las citas, sin importar el filtro).
+  const resumen = useMemo(() => {
+    const c = (estados: string[]) => citas.filter((x: any) => estados.includes(x.estado)).length;
+    return [
+      { label: 'Por llegar', valor: c(['agendada', 'confirmada']), clase: 'text-info' },
+      { label: 'En sala', valor: c(['en_espera']), clase: 'text-warning' },
+      { label: 'En consulta', valor: c(['en_consulta']), clase: 'text-primary' },
+      { label: 'Atendidos', valor: c(['atendida', 'asistio']), clase: 'text-success' },
+    ];
+  }, [citas]);
 
   const resumenHorario = (medicoId: string) => {
     const propios = horarios.filter((h) => h.medico_id === medicoId && h.activo);
@@ -163,6 +203,21 @@ export default function Agenda() {
             {sedes.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {resumen.map((r) => (
+          <div key={r.label} className="rounded-md border px-3 py-1.5 text-xs flex items-center gap-2">
+            <span className={`text-base font-semibold tabular-nums ${r.clase}`}>{r.valor}</span>
+            <span className="text-muted-foreground">{r.label}</span>
+          </div>
+        ))}
+        {(esOptometra || role === 'admin') && (
+          <div className="flex items-center gap-2 ml-auto">
+            <Switch id="solo-mias" checked={soloMias} onCheckedChange={setSoloMias} />
+            <Label htmlFor="solo-mias" className="text-sm cursor-pointer">Solo mis citas</Label>
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="dia">
@@ -211,6 +266,24 @@ export default function Agenda() {
                               {fila.cita.pacientes?.telefono && ` · ${fila.cita.pacientes.telefono}`}
                             </span>
                             {fila.cita.observaciones && <p className="text-[11px] opacity-80 mt-0.5">{fila.cita.observaciones}</p>}
+                            {fila.cita.hora_llegada && ['en_espera', 'en_consulta'].includes(fila.cita.estado) && (
+                              <p className="text-[11px] mt-0.5">Llegó {new Date(fila.cita.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</p>
+                            )}
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {puedeAgendar && ['agendada', 'confirmada'].includes(fila.cita.estado) && fecha === today && (
+                                <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => cambiarEstado.mutate({ id: fila.cita.id, estado: 'en_espera' })}>
+                                  <LogIn className="h-3.5 w-3.5 mr-1" />Llegó
+                                </Button>
+                              )}
+                              {puedeAtender && ['en_espera', 'en_consulta'].includes(fila.cita.estado) && (
+                                <Button size="sm" className="h-7 text-xs" onClick={() => atender(fila.cita)}>
+                                  <Stethoscope className="h-3.5 w-3.5 mr-1" />{fila.cita.estado === 'en_consulta' ? 'Continuar consulta' : 'Atender'}
+                                </Button>
+                              )}
+                              {fila.cita.estado === 'atendida' && (
+                                <span className="text-[11px] flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Pasó a facturación</span>
+                              )}
+                            </div>
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -219,7 +292,7 @@ export default function Agenda() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel className="text-xs">Cambiar estado</DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              {Object.entries(estadoLabel).filter(([k]) => k !== fila.cita.estado).map(([k, label]) => (
+                              {ESTADOS_CITA_MANUALES.filter((k) => k !== fila.cita.estado).map((k) => [k, estadoLabel[k]] as const).map(([k, label]) => (
                                 <DropdownMenuItem
                                   key={k}
                                   className={k === 'cancelada' ? 'text-destructive' : ''}

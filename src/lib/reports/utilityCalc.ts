@@ -20,16 +20,12 @@
  * Ambos viven a nivel de ORDEN para que la utilidad por producto siga siendo
  * comparable entre órdenes con y sin esos ajustes.
  *
- * LIMITACIÓN CONOCIDA — cantidad
- * ------------------------------
- * La tabla `orden_productos` NO tiene columna `cantidad` (verificado en
- * src/integrations/supabase/types.ts). La cantidad queda embebida en el importe de
- * `precio_venta`, por lo que:
- *  - `ingreso`, `costo` y `utilidad` SÍ son correctos (son importes totales).
- *  - `cantidad` cuenta LÍNEAS de orden, no unidades vendidas. En consecuencia
- *    `utilidad_unitaria` es utilidad por línea, no por unidad física.
- * Corregirlo requiere una migración que agregue `orden_productos.cantidad`; hasta
- * entonces `cantidad` se documenta como "líneas" en los reportes.
+ * Cantidad
+ * --------
+ * `orden_productos.cantidad` (migración 20260828010000) guarda las unidades de
+ * la línea; las filas anteriores a la columna valen 1. `precio_venta` es el
+ * importe TOTAL de la línea, así que `ingreso`, `costo` y `utilidad` son
+ * importes y `utilidad_unitaria` = utilidad / unidades.
  */
 
 export interface OrdenProductoRow {
@@ -42,16 +38,14 @@ export interface OrdenProductoRow {
   comision_financiera?: number | string | null;
   utilidad_calculada?: number | string | null;
   descripcion?: string | null;
+  cantidad?: number | string | null;
   productos_catalogo?: { nombre?: string | null; categoria?: string | null } | null;
 }
 
 export interface ProductoAgregado {
   nombre: string;
   categoria: string;
-  /**
-   * Número de LÍNEAS de orden agrupadas, no de unidades vendidas:
-   * `orden_productos` no tiene columna `cantidad` (ver nota del encabezado).
-   */
+  /** Unidades vendidas (suma de `orden_productos.cantidad`). */
   cantidad: number;
   ingreso: number;
   utilidad: number;
@@ -92,10 +86,10 @@ export function agregarProductos(rows: OrdenProductoRow[]): ProductoAgregado[] {
     const nombre = p.productos_catalogo?.nombre || p.descripcion || 'Sin nombre';
     const categoria = p.productos_catalogo?.categoria || p.tipo_producto || 'otros';
     const cur = map.get(nombre) || { nombre, categoria, cantidad: 0, ingreso: 0, utilidad: 0, costo: 0 };
-    // Se cuenta 1 por línea porque la BD no persiste la cantidad de unidades.
-    // El importe (ingreso/costo/utilidad) sí es correcto: precio_venta ya trae
-    // cantidad × precio unitario neto de descuento.
-    cur.cantidad += 1;
+    // Unidades de la línea (columna `cantidad`, migración 20260828010000).
+    // Las filas anteriores a la columna valen 1. El importe ya es el total de
+    // la línea: precio_venta trae cantidad × precio unitario neto de descuento.
+    cur.cantidad += Math.max(1, num(p.cantidad) || 1);
     cur.ingreso += num(p.precio_venta);
     cur.utilidad += calcularUtilidadFila(p);
     cur.costo += calcularCostoTotal(p);

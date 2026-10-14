@@ -362,7 +362,7 @@ export default function Cotizaciones() {
   const handleDuplicate = (cotizacion: any) => {
     const parsed = parseItems(cotizacion.items);
     setSelectedPaciente(cotizacion.paciente_id);
-    setMonturaPropia(parsed.montura_propia);
+    setMonturaPropia(false); // opción retirada: las copias no la heredan
     setMedioPago(parsed.medio_pago);
     setItems(parsed.lineas.length > 0 ? parsed.lineas.map(it => ({ ...nuevoItem(), ...it })) : [nuevoItem()]);
     setShowForm(true);
@@ -616,7 +616,7 @@ export default function Cotizaciones() {
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Cant.</Label>
-                        <Input type="number" min={1} value={item.cantidad} onChange={e => updateItem(i, { cantidad: parseInt(e.target.value) || 1 })} />
+                        <Input type="number" min={1} value={item.cantidad || ''} onChange={e => updateItem(i, { cantidad: parseInt(e.target.value) || 0 })} onBlur={() => { if (!item.cantidad) updateItem(i, { cantidad: 1 }); }} />
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Precio Full</Label>
@@ -628,9 +628,10 @@ export default function Cotizaciones() {
                           type="number"
                           min={0}
                           max={100}
-                          value={item.descuento_porcentaje || 0}
+                          value={item.aplica_descuento ? (item.descuento_porcentaje || '') : ''}
+                          placeholder="0"
                           disabled={!item.aplica_descuento}
-                          onChange={e => updateItem(i, { descuento_porcentaje: parseFloat(e.target.value) || 0 })}
+                          onChange={e => updateItem(i, { descuento_porcentaje: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })}
                         />
                       </div>
                     </div>
@@ -656,13 +657,6 @@ export default function Cotizaciones() {
 
             <Separator />
 
-            <div className="flex items-center gap-2 rounded-lg bg-muted/40 border p-3">
-              <Checkbox id="montura-propia" checked={monturaPropia} onCheckedChange={(v) => setMonturaPropia(!!v)} />
-              <Label htmlFor="montura-propia" className="cursor-pointer text-sm">
-                Paciente trae su montura
-                <span className="ml-2 text-xs text-muted-foreground">(descuento de ${DESCUENTO_MONTURA_PROPIA.toLocaleString('es-CO')})</span>
-              </Label>
-            </div>
 
             <div className="rounded-lg p-3 bg-primary/5 border border-primary/20 space-y-1 text-sm">
               <div className="flex justify-between"><span>Subtotal</span><span>${totales.subtotal.toLocaleString('es-CO')}</span></div>

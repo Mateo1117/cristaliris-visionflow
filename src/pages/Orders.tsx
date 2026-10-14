@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -23,10 +22,11 @@ import { etiquetaCategoria } from '@/lib/catalogo';
 import { PacienteSelector } from '@/components/patients/PacienteSelector';
 import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
 import { registrarAplicacionDirecta } from '@/components/billing/abonosDb';
+import { MonturaOrden } from '@/components/orders/MonturaOrden';
+import { MONTURA_VACIA, descripcionMontura, precioMontura, type MonturaOrdenValor } from '@/components/orders/montura';
 import { toast } from 'sonner';
 import {
   MEDIOS_PAGO,
-  DESCUENTO_MONTURA_PROPIA,
   calcularTotales,
   descuentoEfectivo,
   reglaMedioPago,
@@ -44,6 +44,9 @@ interface OrderItem {
   descuento_porcentaje: number;
   laboratorio_id?: string | null;
   numero_montura?: string;
+  /** Montura del inventario: se descuenta del stock al crear la orden. */
+  inventario_id?: string | null;
+  costo_unitario?: number;
   medidas_progresivo?: {
     puente?: string;
     distancia_vertice?: string;
@@ -92,7 +95,8 @@ async function crearOrdenPorPasos(
   const { data: orden, error: oe } = await supabase.from('ordenes').insert(ordenPayload as any).select('id, numero_orden').single();
   if (oe) throw oe;
 
-  const { error: pe } = await supabase.from('orden_productos').insert(productos.map((p) => ({ ...p, orden_id: orden.id })) as any);
+  const filas = productos.map((p) => Object.fromEntries(Object.entries({ ...p, orden_id: orden.id }).filter(([k]) => !k.startsWith('_'))));
+  const { error: pe } = await supabase.from('orden_productos').insert(filas as any);
   if (pe) {
     // Sin DELETE por RLS: se deja en cero para que no infle cartera ni ventas.
     await supabase.from('ordenes').update({
@@ -134,7 +138,7 @@ export default function Orders() {
   const [showForm, setShowForm] = useState(false);
   const [selectedPaciente, setSelectedPaciente] = useState('');
   const [items, setItems] = useState<OrderItem[]>([nuevoItem()]);
-  const [monturaPropia, setMonturaPropia] = useState(false);
+  const [montura, setMontura] = useState<MonturaOrdenValor>(MONTURA_VACIA);
   const [observaciones, setObservaciones] = useState('');
   const [abono, setAbono] = useState(0);
   const [medioPagoAbono, setMedioPagoAbono] = useState('efectivo');
@@ -235,6 +239,26 @@ export default function Orders() {
    * Totales de la orden a partir de `pricing.ts` (fuente única de la lógica
    * financiera). Se usa tanto para la vista previa como para lo que se persiste.
    */
+  /** Línea de la montura elegida, para totales y para guardar. */
+  const lineaMontura = (): OrderItem | null => {
+    if (montura.modo === 'ninguna') return null;
+    return {
+      ...nuevoItem(),
+      tipo_producto: 'montura',
+      descripcion: descripcionMontura(montura),
+      precio_unitario: precioMontura(montura),
+      aplica_descuento: montura.aplica_descuento,
+      descuento_porcentaje: montura.aplica_descuento ? pctEfectivo : 0,
+      numero_montura: montura.referencia || '',
+      inventario_id: montura.modo === 'inventario' ? montura.inventario_id : null,
+      costo_unitario: montura.costo,
+    };
+  };
+  const conMontura = (lista: OrderItem[]) => {
+    const m = lineaMontura();
+    return m ? [...lista, m] : lista;
+  };
+
   const computeTotales = (lista: OrderItem[]) =>
     calcularTotales({
       items: lista.map((it) => ({
@@ -245,14 +269,13 @@ export default function Orders() {
       })),
       pctEmpresa: descuentoConvenio,
       medioPago: medioPagoSaldo,
-      descuentoAdicional: monturaPropia ? DESCUENTO_MONTURA_PROPIA : 0,
     });
 
   const totales = useMemo(() => {
-    const t = computeTotales(items);
+    const t = computeTotales(conMontura(items));
     return { ...t, saldo: Math.max(0, t.total - (abono || 0)) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, monturaPropia, abono, descuentoConvenio, medioPagoSaldo]);
+  }, [items, montura, abono, descuentoConvenio, medioPagoSaldo]);
 
   const productosPorCategoria = useMemo(() => {
     const groups: Record<string, any[]> = {};
@@ -265,7 +288,7 @@ export default function Orders() {
   }, [productos]);
 
   const resetForm = () => {
-    setSelectedPaciente(''); setItems([nuevoItem()]); setMonturaPropia(false);
+    setSelectedPaciente(''); setItems([nuevoItem()]); setMontura(MONTURA_VACIA);
     setObservaciones(''); setAbono(0); setMedioPagoAbono('efectivo'); setMedioPagoSaldo('efectivo');
     setHistoriaId(null);
   };
@@ -273,7 +296,9 @@ export default function Orders() {
   const createOrden = useMutation({
     mutationFn: async () => {
       if (!selectedPaciente) throw new Error('Seleccione un paciente');
-      const lineas = items.filter(it => it.descripcion);
+      if (montura.modo === 'inventario' && !montura.inventario_id) throw new Error('Seleccione la montura del inventario o cambie a "Otra montura"');
+      if (montura.modo === 'otra' && !montura.descripcion.trim()) throw new Error('Escriba la marca o modelo de la montura');
+      const lineas = conMontura(items.filter(it => it.descripcion));
       if (lineas.length === 0) throw new Error('Agregue al menos un ítem');
 
       // Se recalculan los totales SOLO con las líneas que realmente se guardan,
@@ -294,7 +319,6 @@ export default function Orders() {
         descuento_empresa: t.descuentoValor,
         descuento_porcentaje: t.descuentoPct,
         descuento_montura_propia: t.descuentoAdicional,
-        montura_propia: monturaPropia,
         recargo_financiero: t.recargoFinanciero,
         total_final: t.total,
         saldo_pendiente: saldo,
@@ -316,6 +340,12 @@ export default function Orders() {
         medidas_progresivo: it.tipo_lente_tiempo === 'progresivo' && it.medidas_progresivo
           ? it.medidas_progresivo as any
           : null,
+        ...(it.tipo_producto === 'montura' ? {
+          montura_id: it.inventario_id || null,
+          costo_montura: (it.costo_unitario || 0) * Math.max(1, it.cantidad || 1),
+          // crear_orden descuenta la montura del stock real y deja el movimiento en el kardex.
+          ...(it.inventario_id ? { _inventario_id: it.inventario_id, _inventario_cantidad: 1 } : {}),
+        } : {}),
       }));
 
       const abonoInicial = abono > 0 ? { monto: abono, medio_pago: medioPagoAbono } : null;
@@ -344,6 +374,13 @@ export default function Orders() {
         }
       } else {
         throw rpcError;
+      }
+
+      // Fotos de la montura a la carpeta de la orden.
+      for (const foto of montura.fotos) {
+        const ruta = `${orden.id}/montura_${Date.now()}_${foto.name.replace(/[^\w.-]/g, '_')}`;
+        const { error: fe } = await supabase.storage.from('orden-fotos').upload(ruta, foto);
+        if (fe) advertencias.push(`No se pudo subir la foto ${foto.name}: ${fe.message}`);
       }
 
       // Notificación interna automática (no crítica)
@@ -469,7 +506,7 @@ export default function Orders() {
                       </div>
                       <div className="col-span-4 md:col-span-2 space-y-1">
                         <Label className="text-xs">Cant.</Label>
-                        <Input type="number" min={1} value={it.cantidad} onChange={(e) => updateItem(i, { cantidad: parseInt(e.target.value) || 1 })} />
+                        <Input type="number" min={1} value={it.cantidad || ''} onChange={(e) => updateItem(i, { cantidad: parseInt(e.target.value) || 0 })} onBlur={() => { if (!it.cantidad) updateItem(i, { cantidad: 1 }); }} />
                       </div>
                       <div className="col-span-8 md:col-span-2 space-y-1">
                         <Label className="text-xs">Precio</Label>
@@ -480,8 +517,10 @@ export default function Orders() {
                         <Input
                           type="number" min={0} max={100}
                           disabled={!it.aplica_descuento}
-                          value={it.aplica_descuento ? (it.descuento_porcentaje || 0) : 0}
-                          onChange={(e) => updateItem(i, { descuento_porcentaje: parseFloat(e.target.value) || 0 })}
+                          // Vacío en vez de 0: con value={0} el navegador dejaba el cero adelante ("050").
+                          value={it.aplica_descuento ? (it.descuento_porcentaje || '') : ''}
+                          placeholder="0"
+                          onChange={(e) => updateItem(i, { descuento_porcentaje: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)) })}
                         />
                       </div>
                       <div className="col-span-4 md:col-span-1 flex justify-end">
@@ -561,13 +600,8 @@ export default function Orders() {
               ))}
             </div>
 
-            {/* Montura propia */}
-            <div className="flex items-center gap-2 p-3 rounded-md border">
-              <Checkbox id="montura-propia" checked={monturaPropia} onCheckedChange={(c) => setMonturaPropia(!!c)} />
-              <Label htmlFor="montura-propia" className="text-sm cursor-pointer">
-                Paciente trae su propia montura (descuento ${DESCUENTO_MONTURA_PROPIA.toLocaleString('es-CO')})
-              </Label>
-            </div>
+            {/* Montura */}
+            <MonturaOrden valor={montura} onChange={setMontura} />
 
             <Separator />
 
@@ -578,9 +612,6 @@ export default function Orders() {
                 <span>Descuento convenio {totales.descuentoPct > 0 && `(${totales.descuentoPct}%)`}</span>
                 <span>-${totales.descuentoValor.toLocaleString('es-CO')}</span>
               </div>
-              {monturaPropia && (
-                <div className="flex justify-between text-sm text-destructive"><span>Montura propia</span><span>-${totales.descuentoAdicional.toLocaleString('es-CO')}</span></div>
-              )}
               {totales.recargoFinanciero > 0 && (
                 <div className="flex justify-between text-sm text-warning">
                   <span>Recargo financiero (9% · {reglaSaldo.l})</span>

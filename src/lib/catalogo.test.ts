@@ -35,3 +35,15 @@ describe('precioAjustado', () => {
     expect(precioAjustado(180000, 'valor', 0)).toBe(180000);
   });
 });
+
+import { MONTURA_VACIA, descripcionMontura, precioMontura } from '@/components/orders/montura';
+describe('montura de la orden', () => {
+  it('sin montura no suma precio', () => {
+    expect(precioMontura({ ...MONTURA_VACIA, precio: '120000' })).toBe(0);
+  });
+  it('lee el precio y arma la descripción', () => {
+    const m = { ...MONTURA_VACIA, modo: 'otra' as const, descripcion: 'Ray-Ban RB5154', referencia: 'M-12', precio: '120000' };
+    expect(precioMontura(m)).toBe(120000);
+    expect(descripcionMontura(m)).toBe('Montura · Ray-Ban RB5154 · Ref. M-12');
+  });
+});

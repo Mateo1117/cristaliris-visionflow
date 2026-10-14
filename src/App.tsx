@@ -31,6 +31,7 @@ const UsersPage = lazy(() => import("./pages/Users"));
 const QualityControl = lazy(() => import("./pages/QualityControl"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const Cotizaciones = lazy(() => import("./pages/Cotizaciones"));
+const Crm = lazy(() => import("./pages/Crm"));
 
 import type { AppRole } from "./types";
 
@@ -50,6 +51,7 @@ const ROLES_CARTERA: AppRole[] = ['admin', 'contador', 'asesor_comercial'];
 const ROLES_FACTURACION: AppRole[] = ['admin', 'asesor_comercial', 'auxiliar_optica'];
 const ROLES_HORARIOS: AppRole[] = ['admin', 'optometra', 'asesor_comercial', 'auxiliar_optica'];
 const ROLES_CATALOGO: AppRole[] = ['admin', 'asesor_comercial'];
+const ROLES_CRM: AppRole[] = ['admin', 'asesor_comercial', 'auxiliar_optica', 'optometra', 'contador'];
 const ROLES_REPORTES: AppRole[] = ['admin', 'contador'];
 const ROLES_ADMIN: AppRole[] = ['admin'];
 
@@ -76,6 +78,7 @@ const App = () => (
           <Route path="/facturacion" element={<ProtectedRoute roles={ROLES_FACTURACION}><Facturacion /></ProtectedRoute>} />
           <Route path="/cartera" element={<ProtectedRoute roles={ROLES_CARTERA}><Billing /></ProtectedRoute>} />
           <Route path="/cotizaciones" element={<ProtectedRoute><Cotizaciones /></ProtectedRoute>} />
+          <Route path="/crm" element={<ProtectedRoute roles={ROLES_CRM}><Crm /></ProtectedRoute>} />
           <Route path="/garantias" element={<ProtectedRoute><Warranties /></ProtectedRoute>} />
           <Route path="/reportes" element={<ProtectedRoute roles={ROLES_REPORTES}><Reports /></ProtectedRoute>} />
           <Route path="/configuracion" element={<ProtectedRoute roles={ROLES_ADMIN}><SettingsPage /></ProtectedRoute>} />

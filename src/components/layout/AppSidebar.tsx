@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Calendar, ClipboardList, Stethoscope,
-  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText, Receipt, CalendarClock, Tags
+  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText, Receipt, CalendarClock, Tags, HeartHandshake
 } from 'lucide-react';
 import { usePorFacturar } from '@/lib/flujoAtencion';
 import { NavLink } from '@/components/NavLink';
@@ -24,6 +24,7 @@ const mainItems: NavItem[] = [
   { title: 'Cotizaciones', url: '/cotizaciones', icon: FileText, modulo: 'cotizaciones' },
   { title: 'Órdenes', url: '/ordenes', icon: ClipboardList, modulo: 'ordenes' },
   { title: 'Control Calidad', url: '/control-calidad', icon: CheckSquare, modulo: 'control-calidad' },
+  { title: 'CRM', url: '/crm', icon: HeartHandshake, modulo: 'crm' },
 ];
 
 const operacionItems: NavItem[] = [

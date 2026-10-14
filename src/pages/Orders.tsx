@@ -342,6 +342,9 @@ export default function Orders() {
         observaciones: observaciones || null,
       };
 
+      // La montura viaja al laboratorio con el lente: si no tiene laboratorio, toma el del primer lente.
+      const labDelLente = lineas.find((l) => l.tipo_producto !== 'montura' && l.laboratorio_id)?.laboratorio_id ?? null;
+
       const productosOrden = lineas.map((it, i) => ({
         tipo_producto: it.tipo_producto || 'lente',
         descripcion: it.descripcion,
@@ -350,7 +353,7 @@ export default function Orders() {
         // convenio. Los reportes de utilidad asumen que precio_venta ya viene neto.
         precio_venta: t.lineas[i].neto,
         producto_catalogo_id: it.producto_catalogo_id || null,
-        laboratorio_id: it.laboratorio_id || null,
+        laboratorio_id: it.laboratorio_id || (it.tipo_producto === 'montura' ? labDelLente : null),
         tipo_lente_tiempo: it.tipo_lente_tiempo || null,
         numero_montura: it.numero_montura || null,
         medidas_progresivo: it.tipo_lente_tiempo === 'progresivo' && it.medidas_progresivo

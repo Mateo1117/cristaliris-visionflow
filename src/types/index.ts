@@ -144,6 +144,9 @@ export interface OrdenProducto {
   tipo_lente_tiempo?: string | null;
   descripcion: string;
   laboratorio_nombre: string;
+  laboratorio_id?: string | null;
+  /** Montura(s) de la misma orden, para verlas en la tarjeta del lente. */
+  montura_orden?: string | null;
   estado_actual: EstadoProducto;
   fecha_creacion: string;
   dias_en_estado: number;

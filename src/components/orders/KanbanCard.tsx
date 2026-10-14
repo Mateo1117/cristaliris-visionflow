@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { colorEstadoProducto, etiquetaEstadoProducto, type OrdenProducto } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, AlertTriangle, ShieldCheck, RotateCcw, Camera, QrCode } from 'lucide-react';
+import { Clock, AlertTriangle, ShieldCheck, RotateCcw, Camera, QrCode, Glasses, FlaskConical } from 'lucide-react';
+import { etiquetaOrden } from '@/lib/kanbanFiltros';
 import { contarFotos } from './fotosOrden';
 
 /**
@@ -59,7 +60,14 @@ export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: ()
             {item.es_reproceso && <RotateCcw className="h-3.5 w-3.5 text-destructive" />}
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mb-2">{item.descripcion}</p>
+        <p className="text-xs text-muted-foreground">{item.descripcion}</p>
+        {item.montura_orden && (
+          <p className="text-[11px] mt-0.5 flex items-center gap-1 truncate" title={`Montura: ${item.montura_orden}`}>
+            <Glasses className="h-3 w-3 shrink-0 text-primary" /><span className="truncate">{item.montura_orden}</span>
+          </p>
+        )}
+        {item.numero_orden && <p className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">{etiquetaOrden(item.numero_orden)}</p>}
+        <div className="mb-2" />
 
         {/* Pedido Creado: show photo & QR indicators */}
         {isPedidoCreado && (
@@ -82,8 +90,8 @@ export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: ()
           >
             {estadoLabel}
           </Badge>
-          <Badge variant="outline" className="text-[10px] h-5 max-w-[40%] truncate" title={item.laboratorio_nombre}>
-            {item.laboratorio_nombre}
+          <Badge variant="outline" className={`text-[10px] h-5 max-w-[40%] truncate gap-1 ${item.laboratorio_id ? 'border-info/40 bg-info/10 text-info' : 'text-muted-foreground'}`} title={`Laboratorio: ${item.laboratorio_nombre}`}>
+            <FlaskConical className="h-3 w-3 shrink-0" />{item.laboratorio_nombre}
           </Badge>
         </div>
 

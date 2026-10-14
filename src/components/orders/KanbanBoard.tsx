@@ -14,6 +14,10 @@ import { AlertTriangle } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { EstadoProducto, OrdenProducto } from '@/types';
+import { Input } from '@/components/ui/input';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { FlaskConical, Search, X } from 'lucide-react';
+import { filtrarKanban, monturasPorOrden, resumenLaboratorios, type FiltrosKanban, type TipoFiltro } from '@/lib/kanbanFiltros';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   diasHabilesEntre,
@@ -57,6 +61,7 @@ export function KanbanBoard() {
   const [pendingQC, setPendingQC] = useState<{ id: string; oldState: string; newState: EstadoProducto; item: OrdenProducto } | null>(null);
   const [pendingRetroceso, setPendingRetroceso] = useState<{ id: string; oldState: string; newState: EstadoProducto } | null>(null);
   const [justificacion, setJustificacion] = useState('');
+  const [filtros, setFiltros] = useState<FiltrosKanban>({ laboratorioId: null, tipo: 'todos', texto: '' });
   const queryClient = useQueryClient();
   const { isAdmin, canWrite, isLoading: permisosCargando } = usePermissions();
   const { festivos } = useFestivos();
@@ -87,7 +92,8 @@ export function KanbanBoard() {
         tipo_producto: p.tipo_producto,
         tipo_lente_tiempo: p.tipo_lente_tiempo,
         descripcion: p.descripcion,
-        laboratorio_nombre: p.laboratorios?.nombre || 'N/A',
+        laboratorio_nombre: p.laboratorios?.nombre || 'Sin laboratorio',
+        laboratorio_id: p.laboratorio_id || null,
         estado_actual: p.estado_actual,
         fecha_creacion: p.created_at,
         created_at: p.created_at,
@@ -232,12 +238,67 @@ export function KanbanBoard() {
     return <div className="text-center py-12 text-muted-foreground">Cargando tablero...</div>;
   }
 
+  const monturas = monturasPorOrden(productos as any);
+  const conMontura = (productos as any[]).map((p) => ({
+    ...p,
+    montura_orden: p.tipo_producto !== 'montura' ? (monturas.get(p.orden_id)?.join(' / ') ?? null) : null,
+  }));
+  const visibles = filtrarKanban(conMontura, filtros);
+  const resumen = resumenLaboratorios(conMontura);
+  const hayFiltro = !!filtros.laboratorioId || filtros.tipo !== 'todos' || !!filtros.texto.trim();
+
   return (
     <>
+      {/* Laboratorios: cuántos trabajos tiene cada uno; clic para filtrar */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {resumen.map((r) => {
+          const activo = filtros.laboratorioId === r.id;
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => setFiltros((f) => ({ ...f, laboratorioId: activo ? null : r.id }))}
+              className={`rounded-lg border px-3 py-1.5 text-left transition-colors ${activo ? 'border-primary bg-primary/10' : 'hover:bg-muted/60'}`}
+              title={`${r.activos} trabajos sin entregar · ${r.enLaboratorio} en el laboratorio · ${r.atrasados} atrasados`}
+            >
+              <p className="text-xs font-medium flex items-center gap-1.5">
+                <FlaskConical className="h-3.5 w-3.5 text-muted-foreground" />{r.nombre}
+                <span className="tabular-nums font-semibold">{r.activos}</span>
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {r.enLaboratorio} en laboratorio{r.atrasados > 0 && <span className="text-destructive"> · {r.atrasados} atrasado{r.atrasados !== 1 ? 's' : ''}</span>}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input className="pl-9 h-9" placeholder="Paciente, ORD-…, referencia de montura…"
+            value={filtros.texto} onChange={(e) => setFiltros((f) => ({ ...f, texto: e.target.value }))} />
+        </div>
+        <ToggleGroup type="single" variant="outline" size="sm" value={filtros.tipo}
+          onValueChange={(v) => v && setFiltros((f) => ({ ...f, tipo: v as TipoFiltro }))}>
+          <ToggleGroupItem value="todos" className="px-3 text-xs">Todo</ToggleGroupItem>
+          <ToggleGroupItem value="lente" className="px-3 text-xs">Lentes</ToggleGroupItem>
+          <ToggleGroupItem value="montura" className="px-3 text-xs">Monturas</ToggleGroupItem>
+        </ToggleGroup>
+        {hayFiltro && (
+          <>
+            <span className="text-xs text-muted-foreground">{visibles.length} de {conMontura.length} trabajos</span>
+            <Button variant="ghost" size="sm" onClick={() => setFiltros({ laboratorioId: null, tipo: 'todos', texto: '' })}>
+              <X className="h-3.5 w-3.5 mr-1" />Quitar filtros
+            </Button>
+          </>
+        )}
+      </div>
+
       <ScrollArea className="w-full">
         <div className="flex gap-3 pb-4" style={{ minWidth: `${ESTADOS_PRODUCTO.length * 260}px` }}>
           {ESTADOS_PRODUCTO.map(({ key, label }) => {
-            const items = productos.filter((p: any) => p.estado_actual === key);
+            const items = visibles.filter((p: any) => p.estado_actual === key);
             return (
               <KanbanColumn
                 key={key}

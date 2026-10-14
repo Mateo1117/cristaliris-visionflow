@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, MoreVertical, MapPin, LogIn, Stethoscope, CheckCircle2 } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, MoreVertical, LogIn, Stethoscope, CheckCircle2, CalendarDays, CalendarRange, LayoutGrid, List } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useNavigate } from 'react-router-dom';
@@ -21,14 +21,22 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-import { aHoraCorta, hoyEnColombia, sumarDias } from '@/lib/agendaGrid';
+import { aHoraCorta, cuadriculaMes, diasDeSemana, hoyEnColombia, inicioMes, sumarDias, sumarMeses } from '@/lib/agendaGrid';
 import { DIAS_SEMANA, calcularTurnos, diaCompletoBloqueado, diaDeSemana } from '@/lib/disponibilidad';
-import { useExcepciones, useHorariosMedicos, useOptometras, useSedesActivas } from '@/lib/useAgendaDatos';
+import { useCitasRango, useExcepciones, useHorariosMedicos, useOptometras, useSedesActivas } from '@/lib/useAgendaDatos';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { AgendaSemana } from '@/components/schedule/AgendaSemana';
+import { AgendaMes } from '@/components/schedule/AgendaMes';
+import { AgendaLista } from '@/components/schedule/AgendaLista';
+import { useSearchParams } from 'react-router-dom';
 
 const estadoColor = ESTADO_CITA_COLOR;
 const estadoLabel = ESTADO_CITA_LABEL;
 
 const SIN_ASIGNAR = 'sin-asignar';
+const TODOS = 'todos';
+type Vista = 'dia' | 'semana' | 'mes' | 'lista';
+const DIAS_LISTA = 14;
 const TODAS = 'todas';
 
 /** Fila de la columna de un médico: una cita o un turno libre. */
@@ -39,6 +47,14 @@ type Fila =
 export default function Agenda() {
   const today = hoyEnColombia();
   const [fecha, setFecha] = useState(today);
+  // Vista elegida: en la URL (?vista=semana) para poder compartirla y recordada por usuario.
+  const [params, setParams] = useSearchParams();
+  const vista = (params.get('vista') ?? (() => { try { return localStorage.getItem('agenda-vista'); } catch { return null; } })() ?? 'dia') as Vista;
+  const cambiarVista = (v: string) => {
+    if (!v) return;
+    try { localStorage.setItem('agenda-vista', v); } catch { /* almacenamiento no disponible */ }
+    setParams((p) => { p.set('vista', v); return p; }, { replace: true });
+  };
   const [sedeId, setSedeId] = useState<string>(TODAS);
   const [prefijo, setPrefijo] = useState<PrefijoCita | null>(null);
   const queryClient = useQueryClient();
@@ -50,6 +66,9 @@ export default function Agenda() {
   const [soloMias, setSoloMias] = useState(false);
   useEffect(() => { if (esOptometra) setSoloMias(true); }, [esOptometra]);
   const puedeAgendar = canWrite('agenda');
+  const [medicoVista, setMedicoVista] = useState<string>(TODOS);
+  useEffect(() => { if (esOptometra && user?.id) setMedicoVista(user.id); }, [esOptometra, user?.id]);
+  const medicoFiltroVista = medicoVista === TODOS ? null : medicoVista;
   const puedeAtender = canView('historias') && (role === 'admin' || role === 'optometra');
 
   const { data: citas = [] } = useQuery({
@@ -64,6 +83,15 @@ export default function Agenda() {
       return data;
     },
   });
+
+  const semana = diasDeSemana(fecha);
+  const cuadricula = cuadriculaMes(fecha);
+  const diasLista = Array.from({ length: DIAS_LISTA }, (_, i) => sumarDias(fecha, i));
+  const [desde, hasta] = vista === 'semana' ? [semana[0], semana[6]]
+    : vista === 'mes' ? [cuadricula[0][0], cuadricula.at(-1)![6]]
+    : [diasLista[0], diasLista.at(-1)!];
+  const { data: citasRango = [] } = useCitasRango(desde, hasta, vista !== 'dia');
+  const [incluirCanceladas, setIncluirCanceladas] = useState(false);
 
   const { data: optometras = [] } = useOptometras();
   const { data: horarios = [] } = useHorariosMedicos();
@@ -102,7 +130,18 @@ export default function Agenda() {
     navigate(`/historias?nueva=1&paciente=${cita.paciente_id}&cita=${cita.id}`);
   };
 
-  const changeDate = (days: number) => setFecha(sumarDias(fecha, days));
+  const changeDate = (paso: number) => setFecha(
+    vista === 'mes' ? sumarMeses(fecha, paso)
+      : sumarDias(fecha, paso * (vista === 'semana' ? 7 : vista === 'lista' ? DIAS_LISTA : 1)));
+  const abrirDia = (d: string) => { setFecha(d); cambiarVista('dia'); };
+  const fmt = (d: string, o: Intl.DateTimeFormatOptions) => new Date(`${d}T12:00:00`).toLocaleDateString('es-CO', o);
+  const tituloRango = vista === 'semana'
+    ? `${fmt(semana[0], { day: 'numeric', month: 'short' })} – ${fmt(semana[6], { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : vista === 'mes' ? fmt(inicioMes(fecha), { month: 'long', year: 'numeric' })
+    : vista === 'lista' ? `${fmt(diasLista[0], { day: 'numeric', month: 'short' })} – ${fmt(diasLista.at(-1)!, { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : fmt(fecha, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const anterior = { dia: 'Día anterior', semana: 'Semana anterior', mes: 'Mes anterior', lista: 'Período anterior' }[vista];
+  const siguiente = { dia: 'Día siguiente', semana: 'Semana siguiente', mes: 'Mes siguiente', lista: 'Período siguiente' }[vista];
   const esPasado = fecha < today;
   const dia = diaDeSemana(fecha);
   const sedeFiltro = sedeId === TODAS ? null : sedeId;
@@ -164,20 +203,64 @@ export default function Agenda() {
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <Button variant="outline" size="icon" onClick={() => changeDate(-1)} aria-label="Día anterior"><ChevronLeft className="h-4 w-4" /></Button>
+        <ToggleGroup type="single" value={vista} onValueChange={cambiarVista} variant="outline" className="mr-1">
+          <ToggleGroupItem value="dia" aria-label="Vista de día" className="gap-1.5 px-3"><CalendarDays className="h-4 w-4" /><span className="hidden sm:inline">Día</span></ToggleGroupItem>
+          <ToggleGroupItem value="semana" aria-label="Vista de semana" className="gap-1.5 px-3"><CalendarRange className="h-4 w-4" /><span className="hidden sm:inline">Semana</span></ToggleGroupItem>
+          <ToggleGroupItem value="mes" aria-label="Vista de mes" className="gap-1.5 px-3"><LayoutGrid className="h-4 w-4" /><span className="hidden sm:inline">Mes</span></ToggleGroupItem>
+          <ToggleGroupItem value="lista" aria-label="Vista de lista" className="gap-1.5 px-3"><List className="h-4 w-4" /><span className="hidden sm:inline">Lista</span></ToggleGroupItem>
+        </ToggleGroup>
+        <Button variant="outline" size="icon" onClick={() => changeDate(-1)} aria-label={anterior}><ChevronLeft className="h-4 w-4" /></Button>
         <Input type="date" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} className="w-[180px]" />
-        <Button variant="outline" size="icon" onClick={() => changeDate(1)} aria-label="Día siguiente"><ChevronRight className="h-4 w-4" /></Button>
+        <Button variant="outline" size="icon" onClick={() => changeDate(1)} aria-label={siguiente}><ChevronRight className="h-4 w-4" /></Button>
         <Button variant="ghost" size="sm" onClick={() => setFecha(today)}>Hoy</Button>
-        <Select value={sedeId} onValueChange={setSedeId}>
+        {vista !== 'dia' && (
+          <Select value={medicoVista} onValueChange={setMedicoVista}>
+            <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos los médicos</SelectItem>
+              {optometras.map((m) => <SelectItem key={m.user_id} value={m.user_id}>{m.nombre}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {vista === 'dia' && <Select value={sedeId} onValueChange={setSedeId}>
           <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={TODAS}>Todas las sedes</SelectItem>
             {sedes.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
           </SelectContent>
-        </Select>
+        </Select>}
+        {vista === 'lista' && (
+          <div className="flex items-center gap-2">
+            <Switch id="canceladas" checked={incluirCanceladas} onCheckedChange={setIncluirCanceladas} />
+            <Label htmlFor="canceladas" className="text-sm cursor-pointer">Incluir canceladas</Label>
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <h2 className="text-base font-semibold mb-3 capitalize">{tituloRango}</h2>
+
+      {vista === 'semana' && (
+        <AgendaSemana
+          dias={semana} hoy={today} citas={citasRango} medicos={optometras} horarios={horarios} excepciones={excepciones}
+          medicoId={medicoFiltroVista} puedeAgendar={puedeAgendar} onNuevaCita={setPrefijo} onAbrirDia={abrirDia}
+        />
+      )}
+      {vista === 'mes' && (
+        <AgendaMes
+          semanas={cuadricula} mes={fecha.slice(0, 7)} hoy={today} citas={citasRango} medicos={optometras}
+          excepciones={excepciones} medicoId={medicoFiltroVista} onAbrirDia={abrirDia}
+        />
+      )}
+      {vista === 'lista' && (
+        <AgendaLista
+          dias={diasLista} hoy={today} citas={citasRango} medicos={optometras} medicoId={medicoFiltroVista}
+          incluirCanceladas={incluirCanceladas} onAbrirDia={abrirDia}
+        />
+      )}
+
+      {vista === 'dia' && <>
+
+      {vista === 'dia' && <div className="flex flex-wrap items-center gap-2 mb-4">
         {resumen.map((r) => (
           <div key={r.label} className="rounded-md border px-3 py-1.5 text-xs flex items-center gap-2">
             <span className={`text-base font-semibold tabular-nums ${r.clase}`}>{r.valor}</span>
@@ -190,12 +273,9 @@ export default function Agenda() {
             <Label htmlFor="solo-mias" className="text-sm cursor-pointer">Solo mis citas</Label>
           </div>
         )}
-      </div>
+      </div>}
 
 
-          <p className="text-sm text-muted-foreground mb-3 capitalize">
-            {new Date(fecha + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
           {columnas.length === 0 ? (
             <Card>
               <CardContent className="py-10 text-center text-sm text-muted-foreground space-y-2">
@@ -293,6 +373,7 @@ export default function Agenda() {
               ))}
             </div>
           )}
+      </>}
 
       <NuevaCitaDialog
         open={!!prefijo}

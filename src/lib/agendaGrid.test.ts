@@ -6,7 +6,7 @@
  * en ninguna parte — la agenda se veía libre y se podía agendar doble.
  */
 import { describe, it, expect } from 'vitest';
-import { HORAS_BASE, aHoraCorta, construirHoras, sumarDias, hoyEnColombia } from './agendaGrid';
+import { HORAS_BASE, aHoraCorta, construirHoras, sumarDias, hoyEnColombia, inicioSemana, diasDeSemana, sumarMeses, cuadriculaMes } from './agendaGrid';
 
 describe('aHoraCorta', () => {
   it('recorta los segundos que devuelve la base de datos', () => {
@@ -82,5 +82,25 @@ describe('sumarDias', () => {
 describe('hoyEnColombia', () => {
   it('devuelve una fecha con formato yyyy-MM-dd', () => {
     expect(hoyEnColombia()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('semanas y meses', () => {
+  it('la semana empieza el lunes, también desde un domingo', () => {
+    expect(inicioSemana('2026-10-14')).toBe('2026-10-12');
+    expect(inicioSemana('2026-10-18')).toBe('2026-10-12');
+    expect(inicioSemana('2026-10-12')).toBe('2026-10-12');
+    expect(diasDeSemana('2026-10-14')).toEqual(['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18']);
+  });
+  it('navega meses aunque cambie el año', () => {
+    expect(sumarMeses('2026-12-20', 1)).toBe('2027-01-01');
+    expect(sumarMeses('2026-01-31', -1)).toBe('2025-12-01');
+  });
+  it('la cuadrícula cubre el mes con semanas completas', () => {
+    const c = cuadriculaMes('2026-10-14'); // octubre 2026 empieza jueves
+    expect(c[0][0]).toBe('2026-09-28');
+    expect(c[0][3]).toBe('2026-10-01');
+    expect(c.at(-1)!.includes('2026-10-31')).toBe(true);
+    expect(c.every((s) => s.length === 7)).toBe(true);
   });
 });

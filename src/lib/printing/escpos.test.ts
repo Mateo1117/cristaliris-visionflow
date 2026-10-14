@@ -131,6 +131,13 @@ describe('WebUSB connection', () => {
     await expect(isUsbPrinterConnected()).resolves.toBe(true);
   });
 
+  it('sin impresora vinculada no abre el selector de Chrome al imprimir', async () => {
+    const usb = installNavigatorUsb([]);
+    const { printReceiptUSB, SinImpresoraError } = await import('./escpos');
+    await expect(printReceiptUSB({ numero: 'ORD-1', items: [], total: 0 })).rejects.toBeInstanceOf(SinImpresoraError);
+    expect(usb.requestDevice).not.toHaveBeenCalled();
+  });
+
   it('isUsbPrinterConnected devuelve false sin dispositivos', async () => {
     installNavigatorUsb([]);
     const { isUsbPrinterConnected } = await import('./escpos');

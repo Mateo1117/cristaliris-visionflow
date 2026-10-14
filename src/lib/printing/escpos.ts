@@ -38,6 +38,12 @@ const PRINTER_FILTERS: USBDeviceFilter[] = [
 
 let cached: { device: USBDevice; endpoint: number } | null = null;
 
+/** No hay impresora térmica vinculada en este navegador. */
+export class SinImpresoraError extends Error {
+  name = 'SinImpresoraError';
+  constructor() { super('Impresora térmica sin conectar'); }
+}
+
 const isWebUsbAvailable = () => typeof navigator !== 'undefined' && 'usb' in navigator;
 
 export const pickUsbPrinter = async (): Promise<USBDevice> => {
@@ -116,7 +122,12 @@ const openPrinter = async (device: USBDevice): Promise<{ device: USBDevice; endp
 const getConnection = async (forcePicker = false) => {
   if (cached && cached.device.opened && !forcePicker) return cached;
   let device = forcePicker ? null : await findAuthorizedDevice();
-  if (!device) device = await pickUsbPrinter();
+  if (!device) {
+    // Sin impresora vinculada no se abre el selector de Chrome por sorpresa:
+    // quien llama imprime por el navegador. Vincular es "Conectar" (forcePicker).
+    if (!forcePicker) throw new SinImpresoraError();
+    device = await pickUsbPrinter();
+  }
   cached = await openPrinter(device);
   return cached;
 };

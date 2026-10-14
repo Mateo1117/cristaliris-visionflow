@@ -15,6 +15,7 @@ import { Plus, UserPlus, Calendar as CalendarIcon, MoreHorizontal, Shield, KeyRo
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { DoctorScheduleManager } from '@/components/schedule/DoctorScheduleManager';
 
 const ROLES = [
   { value: 'admin', label: 'Administrador' },
@@ -26,7 +27,6 @@ const ROLES = [
   { value: 'visualizador', label: 'Visualizador' },
 ];
 
-const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 export default function UsersPage() {
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -62,20 +62,6 @@ export default function UsersPage() {
       if (error) throw error;
       return data;
     },
-  });
-
-  const { data: horarios = [] } = useQuery({
-    queryKey: ['horarios', showSchedule],
-    queryFn: async () => {
-      if (!showSchedule) return [];
-      const { data, error } = await supabase.from('horarios_medicos')
-        .select('*, sedes(nombre)')
-        .eq('medico_id', showSchedule)
-        .order('dia_semana');
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!showSchedule,
   });
 
   const getRoleForUser = (userId: string) => {
@@ -144,30 +130,6 @@ export default function UsersPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const addSchedule = useMutation({
-    mutationFn: async (data: any) => {
-      const { error } = await supabase.from('horarios_medicos').insert(data);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios'] });
-      toast.success('Horario agregado');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const deleteSchedule = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('horarios_medicos').delete().eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios'] });
-      toast.success('Horario eliminado');
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
   const handleCreateUser = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -178,19 +140,6 @@ export default function UsersPage() {
       return;
     }
     createUser.mutate(data);
-  };
-
-  const handleAddSchedule = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    addSchedule.mutate({
-      medico_id: showSchedule,
-      dia_semana: parseInt(fd.get('dia_semana') as string),
-      hora_inicio: fd.get('hora_inicio'),
-      hora_fin: fd.get('hora_fin'),
-      duracion_cita: parseInt(fd.get('duracion_cita') as string) || 30,
-      sede_id: fd.get('sede_id') || null,
-    });
   };
 
   const doctors = profiles.filter((p: any) => isDoctor(p.user_id));
@@ -412,55 +361,14 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Schedule Dialog */}
-      <Dialog open={!!showSchedule} onOpenChange={(o) => { if (!o) setShowSchedule(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Horarios — {scheduleDoctor}</DialogTitle></DialogHeader>
-          <div className="space-y-3 max-h-60 overflow-y-auto">
-            {horarios.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Sin horarios configurados</p>
-            ) : horarios.map((h: any) => (
-              <div key={h.id} className="flex items-center justify-between text-sm border rounded-md p-2">
-                <div>
-                  <span className="font-medium">{DIAS[h.dia_semana]}</span>
-                  <span className="text-muted-foreground ml-2">{h.hora_inicio} – {h.hora_fin}</span>
-                  <span className="text-muted-foreground ml-2">({h.duracion_cita}min)</span>
-                  {h.sedes?.nombre && <Badge variant="outline" className="ml-2 text-[10px]">{h.sedes.nombre}</Badge>}
-                </div>
-                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteSchedule.mutate(h.id)}>×</Button>
-              </div>
-            ))}
-          </div>
-          <form onSubmit={handleAddSchedule} className="grid grid-cols-2 gap-3 pt-4 border-t">
-            <div className="space-y-1">
-              <Label className="text-xs">Día</Label>
-              <Select name="dia_semana" defaultValue="1">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {DIAS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Sede</Label>
-              <Select name="sede_id">
-                <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                <SelectContent>
-                  {sedes.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1"><Label className="text-xs">Hora Inicio</Label><Input name="hora_inicio" type="time" defaultValue="08:00" required /></div>
-            <div className="space-y-1"><Label className="text-xs">Hora Fin</Label><Input name="hora_fin" type="time" defaultValue="12:00" required /></div>
-            <div className="space-y-1"><Label className="text-xs">Duración (min)</Label><Input name="duracion_cita" type="number" defaultValue="30" min="10" max="120" /></div>
-            <div className="flex items-end">
-              <Button type="submit" size="sm" className="w-full" disabled={addSchedule.isPending}>
-                <Plus className="h-3 w-3 mr-1" />Agregar
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {showSchedule && (
+        <DoctorScheduleManager
+          medicoId={showSchedule}
+          medicoNombre={scheduleDoctor}
+          open={!!showSchedule}
+          onOpenChange={(o) => { if (!o) setShowSchedule(null); }}
+        />
+      )}
     </AppLayout>
   );
 }

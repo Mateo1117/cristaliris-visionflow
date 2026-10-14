@@ -11,16 +11,18 @@ import { Separator } from '@/components/ui/separator';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { User, Eye, FileText, Plus, Phone, Mail, MapPin, Building2, Calendar } from 'lucide-react';
+import { User, Eye, FileText, Plus, Pencil, Phone, Mail, MapPin, Building2, Calendar } from 'lucide-react';
 import { calcularEdad, formatearFechaColombia } from './patientUtils';
 
 interface Props {
   paciente: any | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Abre el formulario de edición del paciente. */
+  onEdit?: (paciente: any) => void;
 }
 
-export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
+export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Props) {
   const [showNewRecord, setShowNewRecord] = useState(false);
   const [viewRecord, setViewRecord] = useState<any>(null);
   const queryClient = useQueryClient();
@@ -98,11 +100,16 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
     <>
       <Dialog open={open && !showNewRecord && !viewRecord} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="flex-row items-center justify-between gap-2 space-y-0 pr-8">
             <DialogTitle className="flex items-center gap-2">
               <User className="h-5 w-5 text-primary" />
               {paciente.nombres} {paciente.apellidos}
             </DialogTitle>
+            {onEdit && (
+              <Button size="sm" variant="outline" onClick={() => onEdit(paciente)}>
+                <Pencil className="h-3.5 w-3.5 mr-1" />Editar datos
+              </Button>
+            )}
           </DialogHeader>
 
           <Tabs defaultValue="datos" className="w-full">

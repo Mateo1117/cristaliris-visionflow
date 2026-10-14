@@ -152,6 +152,16 @@ export default function Patients() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  // Abrir la edición cierra el detalle. Se difiere un tick porque el clic en
+  // "Editar" del menú (que vive en un portal) también llegaba a la fila y abría
+  // el detalle encima del formulario, dejándolo bloqueado.
+  const abrirEdicion = (p: any) => {
+    setTimeout(() => {
+      setDetailPatient(null);
+      setEditingPatient(p);
+    }, 0);
+  };
+
   const handleFormSubmit = (data: Record<string, any>) => {
     if (data.id) updatePaciente.mutate(data);
     else createPaciente.mutate(data);
@@ -168,7 +178,7 @@ export default function Patients() {
       <PatientTable
         pacientes={pacientes}
         isLoading={isLoading}
-        onEdit={(p) => setEditingPatient(p)}
+        onEdit={abrirEdicion}
         onViewDetail={(p) => setDetailPatient(p)}
         onViewHistory={(id) => setHistoryPacienteId(id)}
       />
@@ -212,6 +222,7 @@ export default function Patients() {
         paciente={detailPatient}
         open={!!detailPatient}
         onOpenChange={(o) => { if (!o) setDetailPatient(null); }}
+        onEdit={abrirEdicion}
       />
       <PatientHistoryDialog
         pacienteId={historyPacienteId}

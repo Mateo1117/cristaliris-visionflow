@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type FieldErrors } from 'react-hook-form';
+import { toast } from 'sonner';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -90,6 +91,19 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
     form.setValue('empleado_titular_celular', emp.celular || '', { shouldValidate: true });
   }, [empleadoId, empleados]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Los mensajes de error quedan junto a cada campo y, en un formulario largo,
+  // fuera de la vista: el botón "Guardar" parecía no hacer nada. Pacientes
+  // registrados antes de la validación (p. ej. con un celular de 11 dígitos)
+  // no se podían editar sin saber por qué.
+  const avisarErrores = (errores: FieldErrors<PacienteFormValues>) => {
+    const mensajes = Object.values(errores)
+      .map((e) => e?.message)
+      .filter(Boolean) as string[];
+    toast.error('Revise los datos antes de guardar', {
+      description: mensajes.slice(0, 3).join(' · '),
+    });
+  };
+
   const enviar = (v: PacienteFormValues) => {
     const conConvenio = v.empresa_id !== 'ninguna';
     onSubmit({
@@ -121,7 +135,7 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{isEditing ? 'Editar Paciente' : 'Nuevo Paciente'}</DialogTitle></DialogHeader>
         <Form {...form}>
-          <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={form.handleSubmit(enviar)} noValidate>
+          <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={form.handleSubmit(enviar, avisarErrores)} noValidate>
             <FormField
               control={form.control}
               name="tipo_documento"

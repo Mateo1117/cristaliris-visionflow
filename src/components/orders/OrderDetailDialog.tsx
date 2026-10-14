@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ESTADOS_PRODUCTO, type OrdenProducto } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
+import { listarFotos } from './fotosOrden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
@@ -272,21 +273,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     queryKey: ['orden-fotos', item?.id],
     queryFn: async () => {
       if (!item) return [];
-      const { data, error } = await supabase.storage.from('orden-fotos').list(item.id);
-      if (error) throw error;
-      // El bucket es privado (las fotos pueden incluir soportes de pago y datos
-      // del paciente), así que se piden enlaces firmados temporales en vez de
-      // URLs públicas.
-      const rutas = data.map(f => `${item.id}/${f.name}`);
-      if (!rutas.length) return [];
-      const { data: firmados, error: errFirma } = await supabase
-        .storage.from('orden-fotos')
-        .createSignedUrls(rutas, 60 * 60); // 1 hora
-      if (errFirma) throw errFirma;
-      return data.map((f, i) => ({
-        name: f.name,
-        url: firmados?.[i]?.signedUrl ?? '',
-      }));
+      return listarFotos(item);
     },
     enabled: !!item && open,
   });
@@ -305,9 +292,9 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     } catch (err: any) { toast.error(err.message); } finally { setUploading(false); }
   };
 
-  const handleDeletePhoto = async (name: string) => {
+  const handleDeletePhoto = async (name: string, carpeta?: string) => {
     if (!item) return;
-    const { error } = await supabase.storage.from('orden-fotos').remove([`${item.id}/${name}`]);
+    const { error } = await supabase.storage.from('orden-fotos').remove([`${carpeta ?? item.id}/${name}`]);
     if (error) toast.error(error.message);
     else { refetchFotos(); toast.success('Foto eliminada'); }
   };
@@ -728,7 +715,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                 {fotos.map(f => (
                   <div key={f.name} className="relative group rounded overflow-hidden">
                     <img src={f.url} alt={f.name} className="w-full h-24 object-cover" />
-                    <button onClick={() => handleDeletePhoto(f.name)} className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleDeletePhoto(f.name, f.carpeta)} className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Trash2 className="h-3 w-3" />
                     </button>
                   </div>

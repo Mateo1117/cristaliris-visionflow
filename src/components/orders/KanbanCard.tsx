@@ -3,7 +3,7 @@ import { colorEstadoProducto, etiquetaEstadoProducto, type OrdenProducto } from 
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Clock, AlertTriangle, ShieldCheck, RotateCcw, Camera, QrCode } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { contarFotos } from './fotosOrden';
 
 /**
  * Semáforo de tiempos (README 3.3): verde dentro del tiempo esperado, amarillo
@@ -34,11 +34,7 @@ export function KanbanCard({ item, onClick }: { item: OrdenProducto; onClick: ()
   // Check if photos exist for pedido_creado cards
   const { data: fotoCount = 0 } = useQuery({
     queryKey: ['orden-fotos-count', item.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.storage.from('orden-fotos').list(item.id);
-      if (error) return 0;
-      return data.length;
-    },
+    queryFn: () => contarFotos(item).catch(() => 0),
     enabled: isPedidoCreado,
     staleTime: 30000,
   });

@@ -25,3 +25,13 @@ describe('catálogo', () => {
     expect(formatoCOP(180000).replace(/\s/g, ' ')).toMatch(/\$\s?180\.000/);
   });
 });
+
+import { precioAjustado } from './catalogo';
+describe('precioAjustado', () => {
+  it('porcentaje redondea a mil; valor fijo suma o resta pesos', () => {
+    expect(precioAjustado(180000, 'porcentaje', 6)).toBe(191000);
+    expect(precioAjustado(180000, 'valor', 10000)).toBe(190000);
+    expect(precioAjustado(5000, 'valor', -10000)).toBe(0);
+    expect(precioAjustado(180000, 'valor', 0)).toBe(180000);
+  });
+});

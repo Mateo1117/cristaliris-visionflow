@@ -103,22 +103,13 @@ export default function CatalogoPrecios() {
 
   const eliminar = useMutation({
     mutationFn: async (p: ProductoCatalogo) => {
-      // Un producto ya vendido no se borra (las órdenes lo referencian): se desactiva.
-      const { count, error: ce } = await supabase.from('orden_productos')
-        .select('id', { count: 'exact', head: true }).eq('producto_catalogo_id', p.id);
-      if (ce) throw ce;
-      if ((count ?? 0) > 0) {
-        const { error } = await supabase.from('productos_catalogo').update({ activo: false }).eq('id', p.id);
-        if (error) throw error;
-        return 'desactivado';
-      }
+      // Las órdenes que lo usaban se conservan; solo pierden el vínculo al catálogo (conservan la descripción).
       const { error } = await supabase.from('productos_catalogo').delete().eq('id', p.id);
       if (error) throw error;
-      return 'eliminado';
     },
-    onSuccess: (r) => {
+    onSuccess: (_, p) => {
       refrescar();
-      toast.success(r === 'eliminado' ? 'Producto eliminado' : 'El producto ya tiene ventas: quedó inactivo en vez de eliminarse');
+      toast.success(`"${p.nombre}" eliminado del catálogo`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -263,7 +254,7 @@ export default function CatalogoPrecios() {
                               <DropdownMenuItem onClick={() => abrir({ ...p })}><Pencil className="h-4 w-4 mr-2" />Editar</DropdownMenuItem>
                               <DropdownMenuItem onClick={() => abrir({ ...p, id: undefined, nombre: `${p.nombre} (copia)` })}><Copy className="h-4 w-4 mr-2" />Duplicar</DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive" onClick={() => { if (confirm(`¿Eliminar "${p.nombre}" del catálogo?`)) eliminar.mutate(p); }}>
+                              <DropdownMenuItem className="text-destructive" onClick={() => { if (confirm(`¿Eliminar "${p.nombre}" del catálogo definitivamente?\n\nLas órdenes que ya lo tienen se conservan con su descripción y precio.`)) eliminar.mutate(p); }}>
                                 <Trash2 className="h-4 w-4 mr-2" />Eliminar
                               </DropdownMenuItem>
                             </DropdownMenuContent>

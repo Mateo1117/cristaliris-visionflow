@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { ESTADOS_PRODUCTO, type OrdenProducto } from '@/types';
+import { etiquetaEstadoProducto, type OrdenProducto } from '@/types';
+import { etapasVisibles, moverEtapa } from '@/lib/etapasKanban';
 import { supabase } from '@/integrations/supabase/client';
 import { listarFotos } from './fotosOrden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { usePermissions } from '@/hooks/usePermissions';
-import { esEstadoLaboratorio, sellosDeFecha } from '@/lib/businessDays';
+import { esEstadoLaboratorio } from '@/lib/businessDays';
 
 interface Props {
   item: OrdenProducto | null;
@@ -178,42 +179,15 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const currentIndex = item ? ESTADOS_PRODUCTO.findIndex(e => e.key === item.estado_actual) : -1;
-  const nextEstado = currentIndex >= 0 && currentIndex < ESTADOS_PRODUCTO.length - 1 ? ESTADOS_PRODUCTO[currentIndex + 1] : null;
-  const prevEstado = currentIndex > 0 ? ESTADOS_PRODUCTO[currentIndex - 1] : null;
+  // Etapas visibles del tablero, en el orden configurado por la óptica.
+  const flujo = etapasVisibles().map((e) => ({ key: e.clave, label: e.nombre }));
+  const currentIndex = item ? flujo.findIndex(e => e.key === item.estado_actual) : -1;
+  const nextEstado = currentIndex >= 0 && currentIndex < flujo.length - 1 ? flujo[currentIndex + 1] : null;
+  const prevEstado = currentIndex > 0 ? flujo[currentIndex - 1] : null;
 
   const changeState = useMutation({
-    mutationFn: async ({ id, newState, oldState, justificacion, retroceso }: { id: string; newState: string; oldState: string; justificacion?: string; retroceso?: boolean }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const ahora = new Date();
-
-      // Reproceso interno: retroceso desde control de calidad hacia el laboratorio.
-      const esReproceso = !!retroceso && oldState === 'control_calidad' && esEstadoLaboratorio(newState);
-
-      const cambios: Record<string, any> = {
-        estado_actual: newState,
-        // Sella la fecha del ciclo correspondiente al estado alcanzado.
-        ...sellosDeFecha(newState, ahora),
-      };
-      if (esReproceso) {
-        cambios.es_reproceso = true;
-        // Reinicia el conteo de tiempo de laboratorio (README 3.2).
-        cambios.fecha_envio_lab = ahora.toISOString();
-      }
-
-      const { error: e1 } = await supabase.from('orden_productos').update(cambios as any).eq('id', id);
-      if (e1) throw e1;
-      const { error: e2 } = await supabase.from('estados_producto').insert({
-        orden_producto_id: id,
-        estado_anterior: oldState as any,
-        estado_nuevo: newState as any,
-        metodo: retroceso ? 'admin_retroceso' : 'manual',
-        usuario_id: user?.id || null,
-        justificacion: justificacion || null,
-      });
-      if (e2) throw e2;
-      return { esReproceso };
-    },
+    mutationFn: ({ id, newState, justificacion, retroceso }: { id: string; newState: string; oldState: string; justificacion?: string; retroceso?: boolean }) =>
+      moverEtapa({ id, estado: newState, justificacion: retroceso ? justificacion : null }).then((r) => ({ esReproceso: r.reproceso })),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       // También el detalle abierto, para que lo editado se vea y se imprima ya.
@@ -434,7 +408,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         </DialogHeader>
 
         <div className="flex items-center gap-2 mb-2">
-          <Badge variant="outline">{ESTADOS_PRODUCTO[currentIndex]?.label}</Badge>
+          <Badge variant="outline">{item ? etiquetaEstadoProducto(item.estado_actual) : ''}</Badge>
           <span className={`text-xs flex items-center gap-1 ${alertLevel === 'destructive' ? 'text-destructive' : alertLevel === 'warning' ? 'text-yellow-500' : 'text-muted-foreground'}`}>
             <Clock className="h-3 w-3" />
             {item.dias_en_estado} / {item.tiempo_esperado_dias} días hábiles

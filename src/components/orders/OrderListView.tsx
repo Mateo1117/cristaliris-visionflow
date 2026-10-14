@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
 import { OrderDetailDialog } from './OrderDetailDialog';
-import { ESTADOS_PRODUCTO, colorEstadoProducto } from '@/types';
+import { colorEstadoProducto, etiquetaEstadoProducto } from '@/types';
+import { indiceEtapa, todasLasEtapas } from '@/lib/etapasKanban';
 import type { OrdenProducto } from '@/types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,7 +92,7 @@ export function OrderListView() {
       const dir = sortAsc ? 1 : -1;
       switch (sortField) {
         case 'paciente': return a.paciente_nombre.localeCompare(b.paciente_nombre) * dir;
-        case 'estado': return a.estado_actual.localeCompare(b.estado_actual) * dir;
+        case 'estado': return (indiceEtapa(a.estado_actual) - indiceEtapa(b.estado_actual)) * dir;
         case 'utilidad': return (a.utilidad_calculada - b.utilidad_calculada) * dir;
         default: return (new Date(a.fecha_creacion).getTime() - new Date(b.fecha_creacion).getTime()) * dir;
       }
@@ -156,7 +157,7 @@ export function OrderListView() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los estados</SelectItem>
-            {ESTADOS_PRODUCTO.map(e => <SelectItem key={e.key} value={e.key}>{e.label}</SelectItem>)}
+            {todasLasEtapas().map(e => <SelectItem key={e.clave} value={e.clave}>{e.nombre}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
@@ -204,7 +205,7 @@ export function OrderListView() {
             {filtered.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron órdenes</TableCell></TableRow>
             ) : filtered.map((p: OrdenProducto) => {
-              const estadoLabel = ESTADOS_PRODUCTO.find(e => e.key === p.estado_actual)?.label || p.estado_actual;
+              const estadoLabel = etiquetaEstadoProducto(p.estado_actual);
               const isDelayed = p.dias_en_estado > p.tiempo_esperado_dias && p.estado_actual !== 'entregado';
               return (
                 <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedItem(p)}>

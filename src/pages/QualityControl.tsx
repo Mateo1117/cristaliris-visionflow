@@ -11,7 +11,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePermissions } from '@/hooks/usePermissions';
-import { diasHabilesEntre, sellosDeFecha, useFestivos } from '@/lib/businessDays';
+import { diasHabilesEntre, useFestivos } from '@/lib/businessDays';
+import { moverEtapa } from '@/lib/etapasKanban';
 import { toast } from 'sonner';
 
 /**
@@ -47,36 +48,15 @@ export default function QualityControl() {
   });
 
   const updateState = useMutation({
-    mutationFn: async ({ id, newState, oldState, obs, reproceso }: { id: string; newState: string; oldState: string; obs: string; reproceso?: boolean }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const ahora = new Date();
-
-      const cambios: Record<string, any> = {
-        observaciones: obs || null,
-        estado_actual: newState,
-        // Sella la fecha del ciclo correspondiente al estado alcanzado.
-        ...sellosDeFecha(newState, ahora),
-      };
-      if (reproceso) {
-        // Reproceso interno: NO es garantía. Reinicia el conteo de laboratorio.
-        cambios.es_reproceso = true;
-        cambios.fecha_envio_lab = ahora.toISOString();
-      }
-
-      const { error: e1 } = await supabase.from('orden_productos')
-        .update(cambios as any)
-        .eq('id', id);
-      if (e1) throw e1;
-
-      const { error: e2 } = await supabase.from('estados_producto').insert({
-        orden_producto_id: id,
-        estado_anterior: oldState as any,
-        estado_nuevo: newState as any,
-        metodo: 'control_calidad',
-        justificacion: obs || null,
-        usuario_id: user?.id || null,
+    mutationFn: async ({ id, newState, obs, reproceso }: { id: string; newState: string; oldState: string; obs: string; reproceso?: boolean }) => {
+      // mover_etapa sella fechas, deja historial y marca el reproceso interno
+      // cuando se devuelve de control de calidad al laboratorio.
+      await moverEtapa({
+        id,
+        estado: newState,
+        justificacion: reproceso ? obs : null,
+        observaciones: reproceso ? null : obs,
       });
-      if (e2) throw e2;
 
       return { reproceso: !!reproceso };
     },

@@ -1,3 +1,4 @@
+import { useEtapasKanban } from '@/lib/etapasKanban';
 import { ReactNode, useEffect } from 'react';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
@@ -9,6 +10,8 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  // Etapas del tablero configuradas por la óptica (nombres, orden, colores).
+  useEtapasKanban();
   // Rehidrata la caché local de parámetros de impresión desde la BD
   // al entrar a cualquier vista que use el layout principal.
   useEffect(() => {

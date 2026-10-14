@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ESTADOS_PRODUCTO } from '@/types';
+import { etiquetaEstadoProducto } from '@/types';
 import { KanbanColumn } from './KanbanColumn';
 import { OrderDetailDialog } from './OrderDetailDialog';
 import { ReadyForDeliveryDialog } from './ReadyForDeliveryDialog';
@@ -16,14 +16,15 @@ import { supabase } from '@/integrations/supabase/client';
 import type { EstadoProducto, OrdenProducto } from '@/types';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { FlaskConical, Search, X } from 'lucide-react';
+import { FlaskConical, Search, Settings2, X } from 'lucide-react';
+import { COLORES_ETAPA, moverEtapa, nombreCorto, useEtapasKanban } from '@/lib/etapasKanban';
+import { EtapasKanbanDialog } from './EtapasKanbanDialog';
 import { filtrarKanban, monturasPorOrden, resumenLaboratorios, type FiltrosKanban, type TipoFiltro } from '@/lib/kanbanFiltros';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   diasHabilesEntre,
   esEstadoLaboratorio,
   esRetroceso,
-  sellosDeFecha,
   useFestivos,
 } from '@/lib/businessDays';
 import { toast } from 'sonner';
@@ -43,8 +44,7 @@ function getTiempoEsperado(tipoLenteTiempo: string | null, labDefault: number | 
   }
 }
 
-const etiquetaEstado = (key: string) =>
-  ESTADOS_PRODUCTO.find((e) => e.key === key)?.label || key.replace(/_/g, ' ');
+const etiquetaEstado = (key: string) => etiquetaEstadoProducto(key);
 
 interface MovimientoEstado {
   id: string;
@@ -61,6 +61,16 @@ export function KanbanBoard() {
   const [pendingQC, setPendingQC] = useState<{ id: string; oldState: string; newState: EstadoProducto; item: OrdenProducto } | null>(null);
   const [pendingRetroceso, setPendingRetroceso] = useState<{ id: string; oldState: string; newState: EstadoProducto } | null>(null);
   const [justificacion, setJustificacion] = useState('');
+  const { data: etapas = [] } = useEtapasKanban();
+  const { data: perfiles = [] } = useQuery({
+    queryKey: ['perfiles-responsables'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('user_id, nombre');
+      return data ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const [configurando, setConfigurando] = useState(false);
   const [filtros, setFiltros] = useState<FiltrosKanban>({ laboratorioId: null, tipo: 'todos', texto: '' });
   const queryClient = useQueryClient();
   const { isAdmin, canWrite, isLoading: permisosCargando } = usePermissions();
@@ -114,44 +124,15 @@ export function KanbanBoard() {
   });
 
   const moveItem = useMutation({
-    mutationFn: async ({ id, oldState, newState, observaciones, retroceso }: MovimientoEstado) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const ahora = new Date();
-
-      // Reproceso interno: se retrocede desde control de calidad hacia el laboratorio.
-      const esReproceso = retroceso && oldState === 'control_calidad' && esEstadoLaboratorio(newState);
-
-      const cambios: Record<string, any> = {
-        estado_actual: newState,
-        // Sella la fecha del ciclo correspondiente al estado alcanzado.
-        ...sellosDeFecha(newState, ahora),
-      };
-      if (esReproceso) {
-        cambios.es_reproceso = true;
-        // Reinicia el conteo de tiempo de laboratorio (README 3.2).
-        cambios.fecha_envio_lab = ahora.toISOString();
-      }
-      if (oldState === 'control_calidad' && observaciones) {
-        cambios.observaciones = observaciones;
-      }
-
-      const { error: e1 } = await supabase.from('orden_productos')
-        .update(cambios as any)
-        .eq('id', id);
-      if (e1) throw e1;
-
-      const { error: e2 } = await supabase.from('estados_producto').insert({
-        orden_producto_id: id,
-        estado_anterior: oldState as any,
-        estado_nuevo: newState as any,
-        metodo: retroceso ? 'admin_retroceso' : 'manual',
-        usuario_id: user?.id || null,
-        justificacion: observaciones || null,
-      });
-      if (e2) throw e2;
-
-      return { esReproceso };
-    },
+    // mover_etapa valida permisos y retrocesos, sella las fechas del ciclo y
+    // deja el historial (también para el mensajero, que no edita órdenes).
+    mutationFn: ({ id, newState, observaciones, retroceso }: MovimientoEstado) =>
+      moverEtapa({
+        id,
+        estado: newState,
+        justificacion: retroceso ? observaciones : null,
+        observaciones: retroceso ? null : observaciones,
+      }).then((r) => ({ esReproceso: r.reproceso })),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['qc-productos'] });
@@ -173,7 +154,9 @@ export function KanbanBoard() {
 
     // Retroceso: solo administradores y con justificación obligatoria (README 3.2).
     if (esRetroceso(oldState, newState)) {
-      if (!isAdmin) {
+      // Devolver de control de calidad al laboratorio (reproceso) lo puede hacer quien revisa calidad.
+      const esReprocesoCalidad = oldState === 'control_calidad' && esEstadoLaboratorio(newState);
+      if (!isAdmin && !esReprocesoCalidad) {
         toast.error('Solo un administrador puede retroceder estados');
         return;
       }
@@ -245,6 +228,11 @@ export function KanbanBoard() {
   }));
   const visibles = filtrarKanban(conMontura, filtros);
   const resumen = resumenLaboratorios(conMontura);
+  // Columnas: etapas visibles + las ocultas que todavía tengan trabajos (para que nada desaparezca).
+  const conTrabajos = new Set(conMontura.map((p: any) => p.estado_actual));
+  const columnas = etapas
+    .filter((e) => e.visible || conTrabajos.has(e.clave))
+    .map((e) => ({ key: e.clave as EstadoProducto, label: e.nombre }));
   const hayFiltro = !!filtros.laboratorioId || filtros.tipo !== 'todos' || !!filtros.texto.trim();
 
   return (
@@ -285,6 +273,11 @@ export function KanbanBoard() {
           <ToggleGroupItem value="lente" className="px-3 text-xs">Lentes</ToggleGroupItem>
           <ToggleGroupItem value="montura" className="px-3 text-xs">Monturas</ToggleGroupItem>
         </ToggleGroup>
+        {isAdmin && (
+          <Button variant="outline" size="sm" className="sm:ml-auto" onClick={() => setConfigurando(true)}>
+            <Settings2 className="h-4 w-4 mr-1" />Configurar etapas
+          </Button>
+        )}
         {hayFiltro && (
           <>
             <span className="text-xs text-muted-foreground">{visibles.length} de {conMontura.length} trabajos</span>
@@ -296,14 +289,18 @@ export function KanbanBoard() {
       </div>
 
       <ScrollArea className="w-full">
-        <div className="flex gap-3 pb-4" style={{ minWidth: `${ESTADOS_PRODUCTO.length * 260}px` }}>
-          {ESTADOS_PRODUCTO.map(({ key, label }) => {
+        <div className="flex gap-3 pb-4" style={{ minWidth: `${columnas.length * 260}px` }}>
+          {columnas.map(({ key, label }) => {
             const items = visibles.filter((p: any) => p.estado_actual === key);
+            const etapa = etapas.find((e) => e.clave === key);
             return (
               <KanbanColumn
                 key={key}
                 estado={key}
                 label={label}
+                colorPunto={COLORES_ETAPA[etapa?.color ?? 'gris']?.punto}
+                responsable={nombreCorto(perfiles.find((pr) => pr.user_id === etapa?.responsable_id)?.nombre) || null}
+                oculta={etapa ? !etapa.visible : false}
                 items={items}
                 onCardClick={setSelectedItem}
                 onDrop={handleDrop}
@@ -313,6 +310,8 @@ export function KanbanBoard() {
         </div>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
+      <EtapasKanbanDialog open={configurando} onOpenChange={setConfigurando} etapas={etapas} perfiles={perfiles}
+        trabajosPorEtapa={Object.fromEntries([...conTrabajos].map((c) => [c, conMontura.filter((p: any) => p.estado_actual === c).length]))} />
       <OrderDetailDialog item={selectedItem} open={!!selectedItem} onOpenChange={(open) => { if (!open) setSelectedItem(null); }} />
       <ReadyForDeliveryDialog
         open={!!pendingDelivery}

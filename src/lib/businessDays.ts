@@ -22,6 +22,7 @@
  * y testeables, sin dependencias de React).
  */
 
+import { buscarEtapa, etapasVisibles, indiceEtapa } from './etapasRegistro';
 import { useQuery } from '@tanstack/react-query';
 import { ESTADOS_PRODUCTO, type EstadoProducto } from '@/types';
 
@@ -227,7 +228,9 @@ export const ORDEN_FLUJO_ESTADOS: EstadoProducto[] = [
 
 /** Posición del estado en el flujo (-1 si es desconocido). */
 export function indiceEstado(estado: string): number {
-  return ORDEN_FLUJO_ESTADOS.indexOf(estado as EstadoProducto);
+  // Orden configurado en el tablero (kanban_etapas); si no está, el canónico.
+  const i = indiceEtapa(estado);
+  return i >= 0 ? i : ORDEN_FLUJO_ESTADOS.indexOf(estado as EstadoProducto);
 }
 
 /** ¿Pasar de `desde` a `hasta` es un retroceso en el flujo? */
@@ -242,7 +245,8 @@ export function esRetroceso(desde: string, hasta: string): boolean {
 export function siguienteEstado(actual: string): { key: EstadoProducto; label: string } | null {
   const idx = indiceEstado(actual);
   if (idx < 0) return null;
-  return ESTADOS_PRODUCTO.find((e) => indiceEstado(e.key) > idx) ?? null;
+  const sig = etapasVisibles().find((e) => indiceEstado(e.clave) > idx);
+  return sig ? { key: sig.clave as EstadoProducto, label: sig.nombre } : null;
 }
 
 /** Estados en los que el producto está en manos del laboratorio. */
@@ -254,7 +258,8 @@ export const ESTADOS_LABORATORIO: EstadoProducto[] = [
 ];
 
 export function esEstadoLaboratorio(estado: string): boolean {
-  return ESTADOS_LABORATORIO.includes(estado as EstadoProducto);
+  const etapa = buscarEtapa(estado);
+  return etapa ? etapa.es_laboratorio : ESTADOS_LABORATORIO.includes(estado as EstadoProducto);
 }
 
 /**

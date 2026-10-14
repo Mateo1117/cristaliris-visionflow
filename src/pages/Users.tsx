@@ -15,7 +15,7 @@ import { Plus, UserPlus, Calendar as CalendarIcon, MoreHorizontal, Shield, KeyRo
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { DoctorScheduleManager } from '@/components/schedule/DoctorScheduleManager';
+import { useNavigate } from 'react-router-dom';
 
 const ROLES = [
   { value: 'admin', label: 'Administrador' },
@@ -30,8 +30,7 @@ const ROLES = [
 
 export default function UsersPage() {
   const [showCreateUser, setShowCreateUser] = useState(false);
-  const [showSchedule, setShowSchedule] = useState<string | null>(null);
-  const [scheduleDoctor, setScheduleDoctor] = useState<string>('');
+  const navigate = useNavigate();
   const [showChangeRole, setShowChangeRole] = useState<{ userId: string; nombre: string; currentRole: string } | null>(null);
   const [showResetPassword, setShowResetPassword] = useState<{ userId: string; nombre: string } | null>(null);
   const [showEditProfile, setShowEditProfile] = useState<any | null>(null);
@@ -236,7 +235,7 @@ export default function UsersPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">{d.nombre}</CardTitle>
-                    <Button size="sm" variant="outline" onClick={() => { setShowSchedule(d.user_id); setScheduleDoctor(d.nombre); }}>
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/horarios?medico=${d.user_id}`)}>
                       <CalendarIcon className="h-3 w-3 mr-1" />Horarios
                     </Button>
                   </div>
@@ -361,14 +360,6 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {showSchedule && (
-        <DoctorScheduleManager
-          medicoId={showSchedule}
-          medicoNombre={scheduleDoctor}
-          open={!!showSchedule}
-          onOpenChange={(o) => { if (!o) setShowSchedule(null); }}
-        />
-      )}
     </AppLayout>
   );
 }

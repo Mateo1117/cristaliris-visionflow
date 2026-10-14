@@ -6,8 +6,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  aHora, aMinutos, buscarCruce, calcularTurnos, dentroDeHorario, diaDeSemana, haySolape, validarBloque,
-  type BloqueHorario,
+  aHora, aMinutos, buscarCruce, calcularTurnos, dentroDeHorario, diaCompletoBloqueado, diaDeSemana, estaBloqueado,
+  haySolape, resumenSemanal, validarBloque, type BloqueHorario, type Excepcion,
 } from './disponibilidad';
 
 const LUNES = '2026-10-12';
@@ -113,5 +113,38 @@ describe('buscarCruce y dentroDeHorario', () => {
   it('verifica que la cita quede dentro de un bloque del médico', () => {
     expect(dentroDeHorario('ana', LUNES, '09:30', '10:00', [bloque()])).toBe(true);
     expect(dentroDeHorario('ana', LUNES, '09:45', '10:15', [bloque()])).toBe(false);
+  });
+});
+
+describe('ausencias y bloqueos', () => {
+  const vacaciones: Excepcion = { medico_id: 'ana', fecha_inicio: '2026-10-10', fecha_fin: '2026-10-14', motivo: 'Vacaciones' };
+  const salidaTemprano: Excepcion = { medico_id: 'ana', fecha_inicio: LUNES, fecha_fin: LUNES, hora_inicio: '09:00', hora_fin: '10:00' };
+
+  it('un día completo bloqueado no ofrece turnos', () => {
+    expect(calcularTurnos({ fecha: LUNES, horarios: [bloque()], citas: [], excepciones: [vacaciones] })).toEqual([]);
+    expect(diaCompletoBloqueado('ana', LUNES, [vacaciones])?.motivo).toBe('Vacaciones');
+  });
+  it('fuera del rango de fechas no aplica', () => {
+    expect(calcularTurnos({ fecha: '2026-10-19', horarios: [bloque()], citas: [], excepciones: [vacaciones] })).toHaveLength(4);
+  });
+  it('un bloqueo de horas quita solo esos turnos', () => {
+    const turnos = calcularTurnos({ fecha: LUNES, horarios: [bloque()], citas: [], excepciones: [salidaTemprano] });
+    expect(turnos.map((t) => t.hora_inicio)).toEqual(['08:00', '08:30']);
+    expect(estaBloqueado('ana', LUNES, '08:30', '09:00', [salidaTemprano])).toBeUndefined();
+  });
+  it('no afecta a otro médico', () => {
+    expect(calcularTurnos({ fecha: LUNES, horarios: [bloque({ medico_id: 'luis' })], citas: [], excepciones: [vacaciones] })).toHaveLength(4);
+  });
+});
+
+describe('resumenSemanal', () => {
+  it('suma horas, turnos y días de los bloques activos', () => {
+    const r = resumenSemanal([
+      bloque(), // lunes 8-10, 30 min: 2 h, 4 turnos
+      bloque({ hora_inicio: '14:00', hora_fin: '17:00', duracion_cita: 20 }), // lunes 3 h, 9 turnos
+      bloque({ dia_semana: 2, hora_inicio: '08:00', hora_fin: '12:00' }), // martes 4 h, 8 turnos
+      bloque({ dia_semana: 3, activo: false }),
+    ]);
+    expect(r).toEqual({ horas: 9, turnos: 21, dias: 2 });
   });
 });

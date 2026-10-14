@@ -15,7 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   DIAS_SEMANA, aHora, aMinutos, buscarCruce, calcularTurnos, dentroDeHorario, diaDeSemana,
-  type BloqueHorario, type CitaOcupada, type Turno,
+  estaBloqueado, type BloqueHorario, type CitaOcupada, type Excepcion, type Turno,
 } from '@/lib/disponibilidad';
 import { hoyEnColombia } from '@/lib/agendaGrid';
 
@@ -32,6 +32,7 @@ interface Props {
   prefijo: PrefijoCita;
   medicos: Medico[];
   horarios: BloqueHorario[];
+  excepciones?: Excepcion[];
   sedes: Array<{ id: string; nombre: string }>;
 }
 
@@ -41,7 +42,7 @@ const minutosAhoraColombia = () => {
   return co.getUTCHours() * 60 + co.getUTCMinutes();
 };
 
-export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios, sedes }: Props) {
+export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios, excepciones = [], sedes }: Props) {
   const queryClient = useQueryClient();
   const [fecha, setFecha] = useState(prefijo.fecha);
   const [sedeId, setSedeId] = useState<string>(TODOS);
@@ -94,7 +95,8 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
     sedeId: sedeId === TODOS ? null : sedeId,
     medicoId: medicoFiltro === TODOS ? null : medicoFiltro,
     desdeMinutos: fecha === hoy ? minutosAhoraColombia() : 0,
-  }), [fecha, horarios, citasDia, sedeId, medicoFiltro, hoy]);
+    excepciones,
+  }), [fecha, horarios, citasDia, sedeId, medicoFiltro, hoy, excepciones]);
 
   const nombreMedico = (id: string) => medicos.find((m) => m.user_id === id)?.nombre ?? 'Médico';
   const turnosPorMedico = useMemo(() => {
@@ -157,6 +159,8 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
     if (!manual || !manualMedico) return null;
     if (aMinutos(manualInicio) >= aMinutos(manualFin)) return 'La hora de fin debe ser mayor a la de inicio';
     if (buscarCruce(manualMedico, manualInicio, manualFin, citasDia)) return 'Se cruza con otra cita de este médico';
+    const bloqueo = estaBloqueado(manualMedico, fecha, manualInicio, manualFin, excepciones);
+    if (bloqueo) return `El médico tiene un bloqueo ese día (${bloqueo.motivo})`;
     if (!dentroDeHorario(manualMedico, fecha, manualInicio, manualFin, horarios)) return 'Está fuera del horario configurado del médico';
     return null;
   })();
@@ -215,7 +219,7 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
               {turnosPorMedico.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground text-center">
                   {medicosConHorarioHoy.size === 0
-                    ? `Ningún médico tiene horario configurado los ${DIAS_SEMANA[diaDeSemana(fecha)].toLowerCase()}. Configúrelo en la pestaña "Horarios Médicos".`
+                    ? `Ningún médico tiene horario configurado los ${DIAS_SEMANA[diaDeSemana(fecha)].toLowerCase()}. Configúrelo en "Horarios médicos".`
                     : 'No quedan turnos libres con estos filtros. Pruebe otra fecha, sede o médico.'}
                 </div>
               ) : (

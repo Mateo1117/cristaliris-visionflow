@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Calendar, ClipboardList, Stethoscope,
-  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText, Receipt
+  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText, Receipt, CalendarClock
 } from 'lucide-react';
 import { usePorFacturar } from '@/lib/flujoAtencion';
 import { NavLink } from '@/components/NavLink';
@@ -18,6 +18,7 @@ const mainItems: NavItem[] = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard, modulo: 'dashboard' },
   { title: 'Pacientes', url: '/pacientes', icon: Users, modulo: 'pacientes' },
   { title: 'Agenda', url: '/agenda', icon: Calendar, modulo: 'agenda' },
+  { title: 'Horarios médicos', url: '/horarios', icon: CalendarClock, modulo: 'horarios' },
   { title: 'Historia Clínica', url: '/historias', icon: Stethoscope, modulo: 'historias' },
   { title: 'Por facturar', url: '/facturacion', icon: Receipt, modulo: 'facturacion' },
   { title: 'Cotizaciones', url: '/cotizaciones', icon: FileText, modulo: 'cotizaciones' },

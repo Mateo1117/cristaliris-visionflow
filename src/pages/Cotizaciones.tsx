@@ -15,6 +15,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { faltaMigracion, registrarResultadoConsulta, textoFormula, type HistoriaPorFacturar } from '@/lib/flujoAtencion';
 import { useAuth } from '@/hooks/useAuth';
+import { textoVentaDirecta, tomarVentaDirecta } from '@/lib/ventaDirecta';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { etiquetaCategoria } from '@/lib/catalogo';
@@ -210,6 +211,20 @@ export default function Cotizaciones() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
 
+  /** Nota de venta directa (canal y fórmula externa) para guardar con la cotización. */
+  const [notaDirecta, setNotaDirecta] = useState('');
+
+  // /cotizaciones?directa=1  viene de "Venta directa" en Por facturar.
+  useEffect(() => {
+    if (params.get('directa') !== '1') return;
+    const v = tomarVentaDirecta();
+    setParams({}, { replace: true });
+    if (!v) return;
+    setSelectedPaciente(v.pacienteId);
+    setNotaDirecta(textoVentaDirecta(v.canal, v.formula));
+    setShowForm(true);
+  }, [params, setParams]);
+
   // /cotizaciones?paciente=…&historia=…  abre la cotización del paciente que no compró.
   useEffect(() => {
     const paciente = params.get('paciente');
@@ -222,6 +237,7 @@ export default function Cotizaciones() {
 
   const resetForm = () => {
     setHistoriaId(null);
+    setNotaDirecta('');
     setSelectedPaciente('');
     setItems([nuevoItem()]);
     setMonturaPropia(false);
@@ -248,6 +264,7 @@ export default function Cotizaciones() {
           // Medio de pago previsto: define el descuento efectivo y el recargo del 9%.
           medio_pago: data.medio_pago,
           ...(historiaId ? { historia_id: historiaId, formula: formulaHistoria } : {}),
+          ...(notaDirecta ? { venta_directa: true, formula: notaDirecta } : {}),
         } as any,
         total_estimado: data.total_estimado,
         fecha_vencimiento: data.fecha_vencimiento || null,
@@ -261,7 +278,7 @@ export default function Cotizaciones() {
           if (!faltaMigracion(e)) toast.warning(`La cotización se creó, pero no se pudo ligar a la historia clínica: ${e.message}`);
         });
       }
-      return { desdeFacturacion: !!historiaId };
+      return { desdeFacturacion: !!historiaId || !!notaDirecta };
     },
     onSuccess: ({ desdeFacturacion }) => {
       queryClient.invalidateQueries({ queryKey: ['cotizaciones'] });
@@ -496,6 +513,9 @@ export default function Cotizaciones() {
               <div className="space-y-2">
                 <Label>Paciente *</Label>
                 <PacienteSelector disabled={!!historiaId} value={selectedPaciente} onChange={setSelectedPaciente} columnas="id, nombres, apellidos, numero_documento, tipo_documento, empresa_id, empresas(razon_social, porcentaje_descuento)" />
+                {notaDirecta && (
+                  <p className="text-xs rounded-md bg-info/10 text-info px-2 py-1.5 whitespace-pre-line">{notaDirecta}</p>
+                )}
                 {historiaId && (
                   <p className="text-xs rounded-md bg-info/10 text-info px-2 py-1.5 whitespace-pre-line">
                     Cotización de la consulta (el paciente no compró).{formulaHistoria ? `\n${formulaHistoria}` : ''}

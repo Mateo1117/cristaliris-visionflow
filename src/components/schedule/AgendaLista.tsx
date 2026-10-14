@@ -20,8 +20,10 @@ interface Props {
   onAbrirDia: (fecha: string) => void;
 }
 
-const titulo = (d: string) =>
-  new Date(`${d}T12:00:00`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+const titulo = (d: string) => {
+  const t = new Date(`${d}T12:00:00`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
 
 export function AgendaLista({ dias, hoy, citas, medicos, medicoId, incluirCanceladas, onAbrirDia }: Props) {
   const visibles = citas.filter((c) =>
@@ -41,7 +43,7 @@ export function AgendaLista({ dias, hoy, citas, medicos, medicoId, incluirCancel
         return (
           <div key={d}>
             <button type="button" onClick={() => onAbrirDia(d)} className="flex items-center gap-2 mb-2 hover:underline">
-              <h3 className={`text-sm font-semibold capitalize ${d === hoy ? 'text-primary' : ''}`}>{d === hoy ? 'Hoy · ' : ''}{titulo(d)}</h3>
+              <h3 className={`text-sm font-semibold ${d === hoy ? 'text-primary' : ''}`}>{d === hoy ? 'Hoy · ' : ''}{titulo(d)}</h3>
               <Badge variant="secondary" className="text-[10px]">{delDia.length}</Badge>
             </button>
             <Card>

@@ -37,6 +37,8 @@ const SIN_ASIGNAR = 'sin-asignar';
 const TODOS = 'todos';
 type Vista = 'dia' | 'semana' | 'mes' | 'lista';
 const DIAS_LISTA = 14;
+/** "miércoles, 14 de octubre" → "Miércoles, 14 de octubre" (`capitalize` de CSS ponía "De"). */
+const mayusculaInicial = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const TODAS = 'todas';
 
 /** Fila de la columna de un médico: una cita o un turno libre. */
@@ -237,7 +239,7 @@ export default function Agenda() {
         )}
       </div>
 
-      <h2 className="text-base font-semibold mb-3 capitalize">{tituloRango}</h2>
+      <h2 className="text-base font-semibold mb-3">{mayusculaInicial(tituloRango)}</h2>
 
       {vista === 'semana' && (
         <AgendaSemana

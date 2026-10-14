@@ -19,6 +19,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { faltaMigracion, registrarResultadoConsulta, textoFormula, type HistoriaPorFacturar } from '@/lib/flujoAtencion';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { etiquetaCategoria } from '@/lib/catalogo';
 import { PacienteSelector } from '@/components/patients/PacienteSelector';
 import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
 import { registrarAplicacionDirecta } from '@/components/billing/abonosDb';
@@ -72,13 +73,6 @@ const nuevoItem = (descDefecto = 0): OrderItem => ({
   medidas_progresivo: {},
 });
 
-const categoriaLabel: Record<string, string> = {
-  monofocal: 'Monofocales',
-  bifocal: 'Bifocales',
-  progresivo: 'Progresivos',
-  lente_contacto: 'Lentes de Contacto',
-  otros: 'Otros',
-};
 
 /** La migración 20261014000000 (flujo de atención y crear_orden) aún no está aplicada. */
 const esFuncionInexistente = (e: { code?: string; message?: string }) =>
@@ -456,7 +450,7 @@ export default function Orders() {
                             <SelectItem value="free">— Personalizado (libre) —</SelectItem>
                             {Object.entries(productosPorCategoria).map(([cat, prods]) => (
                               <SelectGroup key={cat}>
-                                <SelectLabel>{categoriaLabel[cat] || cat}</SelectLabel>
+                                <SelectLabel>{etiquetaCategoria(cat)}</SelectLabel>
                                 {prods.map((p: any) => (
                                   <SelectItem key={p.id} value={p.id}>{p.nombre} — ${Number(p.precio_full).toLocaleString('es-CO')}</SelectItem>
                                 ))}

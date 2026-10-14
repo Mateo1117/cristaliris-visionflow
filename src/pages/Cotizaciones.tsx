@@ -17,6 +17,7 @@ import { faltaMigracion, registrarResultadoConsulta, textoFormula, type Historia
 import { useAuth } from '@/hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { etiquetaCategoria } from '@/lib/catalogo';
 import { PacienteSelector } from '@/components/patients/PacienteSelector';
 import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
 import { toast } from 'sonner';
@@ -407,13 +408,6 @@ export default function Cotizaciones() {
     return groups;
   }, [productos]);
 
-  const categoriaLabel: Record<string, string> = {
-    monofocal: 'Monofocales',
-    bifocal: 'Bifocales',
-    progresivo: 'Progresivos',
-    lente_contacto: 'Lentes de Contacto',
-    otros: 'Otros',
-  };
 
   return (
     <AppLayout>
@@ -560,7 +554,7 @@ export default function Cotizaciones() {
                           <SelectItem value="free">— Texto libre / Montura —</SelectItem>
                           {Object.entries(productosPorCategoria).map(([cat, list]) => (
                             <div key={cat}>
-                              <div className="px-2 py-1 text-[10px] uppercase font-semibold text-muted-foreground bg-muted/50">{categoriaLabel[cat] || cat}</div>
+                              <div className="px-2 py-1 text-[10px] uppercase font-semibold text-muted-foreground bg-muted/50">{etiquetaCategoria(cat)}</div>
                               {list.map((p: any) => (
                                 <SelectItem key={p.id} value={p.id}>
                                   {p.nombre} — ${Number(p.precio_full).toLocaleString('es-CO')}
@@ -828,7 +822,7 @@ export default function Cotizaciones() {
                             <p className="text-sm font-medium">{it.descripcion || 'Sin descripción'}</p>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <Badge variant="outline" className="text-[10px]">{it.tipo_producto || 'lente'}</Badge>
-                              {it.categoria && <Badge variant="outline" className="text-[10px]">{categoriaLabel[it.categoria] || it.categoria}</Badge>}
+                              {it.categoria && <Badge variant="outline" className="text-[10px]">{etiquetaCategoria(it.categoria)}</Badge>}
                               {it.aplica_descuento && it.descuento_porcentaje > 0 && (
                                 <Badge variant="secondary" className="text-[10px]">{it.descuento_porcentaje}% desc</Badge>
                               )}

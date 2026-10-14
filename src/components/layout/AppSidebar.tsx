@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Calendar, ClipboardList, Stethoscope,
-  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText, Receipt, CalendarClock
+  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText, Receipt, CalendarClock, Tags
 } from 'lucide-react';
 import { usePorFacturar } from '@/lib/flujoAtencion';
 import { NavLink } from '@/components/NavLink';
@@ -27,6 +27,7 @@ const mainItems: NavItem[] = [
 ];
 
 const operacionItems: NavItem[] = [
+  { title: 'Catálogo y precios', url: '/catalogo', icon: Tags, modulo: 'catalogo' },
   { title: 'Inventario', url: '/inventario', icon: Package, modulo: 'inventario' },
   { title: 'Cartera', url: '/cartera', icon: Wallet, modulo: 'cartera' },
   { title: 'Garantías', url: '/garantias', icon: ShieldCheck, modulo: 'garantias' },

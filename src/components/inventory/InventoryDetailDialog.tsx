@@ -1,3 +1,5 @@
+import { loadPrintSettings } from '@/lib/printing/printSettings';
+import { printHtmlDocument } from '@/lib/printing/thermal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +21,8 @@ interface InventoryDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+const escapeHtml = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
 export function InventoryDetailDialog({ item, open, onOpenChange }: InventoryDetailDialogProps) {
   const [adjustQty, setAdjustQty] = useState(1);
@@ -137,22 +141,30 @@ export function InventoryDetailDialog({ item, open, onOpenChange }: InventoryDet
   const codeValue = item.codigo_referencia || item.id.slice(0, 12);
   const qrData = JSON.stringify({ inv_id: item.id, ref: codeValue, tipo: item.tipo });
 
+  /**
+   * Etiqueta de inventario al tamaño de etiqueta configurado (Configuración →
+   * Impresión). Antes abría una ventana emergente —que el navegador suele
+   * bloquear— sin tamaño fijo y con QR + código de barras, que no caben en
+   * una etiqueta de 50×30 mm.
+   */
   const handlePrint = () => {
-    const content = printRef.current;
-    if (!content) return;
-    const win = window.open('', '_blank', 'width=400,height=600');
-    if (!win) return;
-    win.document.write(`
-      <html><head><title>Etiqueta - ${codeValue}</title>
-      <style>body{font-family:sans-serif;text-align:center;padding:20px}
-      .label{border:1px solid #ccc;padding:16px;display:inline-block;border-radius:8px}
-      .ref{font-size:18px;font-weight:bold;margin:8px 0}
-      .desc{font-size:12px;color:#666;margin-bottom:12px}
-      @media print{body{padding:0}.label{border:none}}</style></head>
-      <body><div class="label">${content.innerHTML}</div>
-      <script>setTimeout(()=>{window.print();window.close()},500)<\/script></body></html>
-    `);
-    win.document.close();
+    const svg = printRef.current?.querySelector('svg')?.outerHTML ?? '';
+    const { label } = loadPrintSettings();
+    const W = label.widthMm;
+    const H = label.heightMm;
+    const precio = item.precio_venta ? `$${Number(item.precio_venta).toLocaleString('es-CO')}` : '';
+    const desc = escapeHtml(item.descripcion || `${item.marca || ''} ${item.modelo || ''}`.trim());
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiqueta ${escapeHtml(codeValue)}</title><style>
+      @page{size:${W}mm ${H}mm;margin:0}
+      html,body{margin:0;padding:0}
+      .l{width:${W}mm;height:${H}mm;box-sizing:border-box;padding:1mm;display:flex;align-items:center;gap:1.5mm;font-family:Arial,sans-serif;overflow:hidden}
+      .l svg{height:${Math.min(H, W) - 2}mm;width:${Math.min(H, W) - 2}mm;flex-shrink:0}
+      .t{min-width:0;line-height:1.15}
+      .r{font-weight:700;font-size:8pt;word-break:break-all}
+      .d{font-size:6.5pt;color:#333;max-height:3.6em;overflow:hidden}
+      .p{font-weight:700;font-size:8pt;margin-top:.5mm}
+    </style></head><body><div class="l">${svg}<div class="t"><div class="r">${escapeHtml(codeValue)}</div><div class="d">${desc}</div>${precio ? `<div class="p">${precio}</div>` : ''}</div></div></body></html>`;
+    printHtmlDocument(html, `Etiqueta ${codeValue}`);
   };
 
   const movIcon: Record<string, any> = {
@@ -206,7 +218,7 @@ export function InventoryDetailDialog({ item, open, onOpenChange }: InventoryDet
               <p className="text-xs text-muted-foreground">{item.descripcion || `${item.marca || ''} ${item.modelo || ''}`}</p>
             </div>
             <Button onClick={handlePrint} className="w-full" variant="outline">
-              <Printer className="h-4 w-4 mr-1" />Imprimir Etiqueta
+              <Printer className="h-4 w-4 mr-1" />Imprimir etiqueta ({loadPrintSettings().label.widthMm}×{loadPrintSettings().label.heightMm} mm)
             </Button>
           </TabsContent>
 

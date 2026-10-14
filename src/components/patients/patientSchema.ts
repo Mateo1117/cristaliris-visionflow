@@ -56,14 +56,14 @@ export const pacienteSchema = z
     nombres: texto.min(2, 'Los nombres son obligatorios'),
     apellidos: texto.min(2, 'Los apellidos son obligatorios'),
     fecha_nacimiento: texto,
-    genero: texto,
-    telefono: texto,
+    genero: texto.min(1, 'Seleccione el género'),
+    telefono: texto.min(1, 'El teléfono es obligatorio'),
     email: texto,
     ocupacion: texto,
     direccion: texto,
-    ciudad: texto,
-    departamento: texto,
-    empresa_id: texto,
+    ciudad: texto.min(2, 'La ciudad es obligatoria'),
+    departamento: texto.min(2, 'El departamento es obligatorio'),
+    empresa_id: texto.min(1, 'Indique la empresa o "Particular"'),
     modalidad_pago: texto,
     empleado_titular_id: texto,
     empleado_titular_nombre: texto,
@@ -108,35 +108,21 @@ export const pacienteSchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['fecha_nacimiento'], message: errorFecha });
     }
 
-    // Con empresa (convenio) el descuento es por nómina: hace falta el titular.
-    if (v.empresa_id && v.empresa_id !== 'ninguna') {
-      if (!v.empleado_titular_nombre) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['empleado_titular_nombre'],
-          message: 'Indique el nombre del empleado titular',
-        });
-      }
-      if (!v.empleado_titular_cedula) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['empleado_titular_cedula'],
-          message: 'Indique la cédula del empleado titular',
-        });
-      } else if (!/^\d{4,15}$/.test(v.empleado_titular_cedula)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['empleado_titular_cedula'],
-          message: 'La cédula debe contener solo números',
-        });
-      }
-      if (v.empleado_titular_celular && !esTelefonoColombiano(v.empleado_titular_celular)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['empleado_titular_celular'],
-          message: 'Celular inválido. Ej: 3101234567',
-        });
-      }
+    // El titular de nómina ya no se pide al registrar (los datos complementarios
+    // se completan en la historia clínica); si viene, se valida su formato.
+    if (v.empleado_titular_cedula && !/^\d{4,15}$/.test(v.empleado_titular_cedula)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['empleado_titular_cedula'],
+        message: 'La cédula del titular debe contener solo números',
+      });
+    }
+    if (v.empleado_titular_celular && !esTelefonoColombiano(v.empleado_titular_celular)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['empleado_titular_celular'],
+        message: 'Celular del titular inválido. Ej: 3101234567',
+      });
     }
   });
 

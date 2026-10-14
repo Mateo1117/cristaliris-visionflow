@@ -11,16 +11,20 @@ import { Separator } from '@/components/ui/separator';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { User, Eye, FileText, Plus, Phone, Mail, MapPin, Building2, Calendar } from 'lucide-react';
+import { User, Eye, FileText, Plus, Pencil, Phone, Mail, MapPin, Building2, Calendar } from 'lucide-react';
 import { calcularEdad, formatearFechaColombia } from './patientUtils';
+import { DatosPacienteHC } from './DatosPacienteHC';
+import { actualizarDatosPaciente, leerDatosPaciente, validarDatosPaciente } from './pacienteComplementario';
 
 interface Props {
   paciente: any | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Abre el formulario de edición del paciente. */
+  onEdit?: (paciente: any) => void;
 }
 
-export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
+export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Props) {
   const [showNewRecord, setShowNewRecord] = useState(false);
   const [viewRecord, setViewRecord] = useState<any>(null);
   const queryClient = useQueryClient();
@@ -69,10 +73,13 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
         plan_manejo: formData.plan_manejo,
         observaciones: formData.observaciones,
         firma_optometra: formData.firma_optometra || null,
+        ocupacion: leerDatosPaciente(formData).ocupacion || paciente.ocupacion || null,
       });
       if (error) throw error;
+      await actualizarDatosPaciente(paciente, formData);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       queryClient.invalidateQueries({ queryKey: ['historias-paciente', paciente?.id] });
       setShowNewRecord(false);
       toast.success('Historia clínica creada exitosamente');
@@ -85,6 +92,8 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
     const fd = new FormData(e.currentTarget);
     const data: Record<string, any> = {};
     fd.forEach((v, k) => { data[k] = v; });
+    const errorDatos = validarDatosPaciente(data);
+    if (errorDatos) { toast.error(errorDatos); return; }
     createHistoria.mutate(data);
   };
 
@@ -98,11 +107,16 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
     <>
       <Dialog open={open && !showNewRecord && !viewRecord} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="flex-row items-center justify-between gap-2 space-y-0 pr-8">
             <DialogTitle className="flex items-center gap-2">
               <User className="h-5 w-5 text-primary" />
               {paciente.nombres} {paciente.apellidos}
             </DialogTitle>
+            {onEdit && (
+              <Button size="sm" variant="outline" onClick={() => onEdit(paciente)}>
+                <Pencil className="h-3.5 w-3.5 mr-1" />Editar datos
+              </Button>
+            )}
           </DialogHeader>
 
           <Tabs defaultValue="datos" className="w-full">
@@ -325,6 +339,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange }: Props) {
                   <p className="font-medium">{paciente.tipo_documento} {paciente.numero_documento} — {paciente.nombres} {paciente.apellidos}</p>
                   {paciente.telefono && <p className="text-xs text-muted-foreground">Tel: {paciente.telefono}</p>}
                 </div>
+                <DatosPacienteHC paciente={paciente} />
                 <div className="space-y-2">
                   <Label>Motivo de Consulta / Anamnesis</Label>
                   <Textarea name="anamnesis" placeholder="Describa el motivo de consulta..." rows={3} />

@@ -1,19 +1,19 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Trash2, Clock, Calendar, MapPin } from 'lucide-react';
+import { Plus, Trash2, Calendar, MapPin, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { DIAS_SEMANA, validarBloque, type BloqueHorario } from '@/lib/disponibilidad';
 
-const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const TODAS = 'todas';
 
 interface DoctorScheduleManagerProps {
   medicoId: string;
@@ -22,9 +22,21 @@ interface DoctorScheduleManagerProps {
   onOpenChange: (open: boolean) => void;
 }
 
+interface Borrador {
+  id?: string;
+  dias: number[];
+  hora_inicio: string;
+  hora_fin: string;
+  duracion_cita: number;
+  sede_id: string;
+}
+
+const BORRADOR_NUEVO: Borrador = { dias: [1, 2, 3, 4, 5], hora_inicio: '08:00', hora_fin: '12:00', duracion_cita: 30, sede_id: TODAS };
+
 export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChange }: DoctorScheduleManagerProps) {
   const queryClient = useQueryClient();
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [borrador, setBorrador] = useState<Borrador | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const { data: sedes = [] } = useQuery({
     queryKey: ['sedes-schedule'],
@@ -49,74 +61,90 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
     enabled: open && !!medicoId,
   });
 
-  const addSchedule = useMutation({
-    mutationFn: async (data: any) => {
-      const { error } = await supabase.from('horarios_medicos').insert(data);
-      if (error) throw error;
+  const refrescar = () => {
+    queryClient.invalidateQueries({ queryKey: ['horarios-medico-full', medicoId] });
+    queryClient.invalidateQueries({ queryKey: ['horarios-medicos'] });
+  };
+
+  // Antes se hacía un insert por día en paralelo, con un aviso por cada uno y
+  // sin revisar cruces: ahora se valida todo y se guarda en una sola operación.
+  const guardar = useMutation({
+    mutationFn: async (b: Borrador) => {
+      const base = {
+        medico_id: medicoId,
+        hora_inicio: b.hora_inicio,
+        hora_fin: b.hora_fin,
+        duracion_cita: b.duracion_cita,
+        sede_id: b.sede_id === TODAS ? null : b.sede_id,
+      };
+      if (b.id) {
+        const { error } = await supabase.from('horarios_medicos').update({ ...base, dia_semana: b.dias[0] }).eq('id', b.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('horarios_medicos').insert(b.dias.map((d) => ({ ...base, dia_semana: d })));
+        if (error) throw error;
+      }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios-medico-full', medicoId] });
-      setShowAddForm(false);
-      toast.success('Horario agregado');
+    onSuccess: (_, b) => {
+      refrescar();
+      setBorrador(null);
+      toast.success(b.id ? 'Horario actualizado' : `Horario agregado en ${b.dias.length} día${b.dias.length !== 1 ? 's' : ''}`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => setError(e.message),
   });
 
-  const deleteSchedule = useMutation({
+  const eliminar = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('horarios_medicos').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios-medico-full', medicoId] });
-      toast.success('Horario eliminado');
-    },
+    onSuccess: () => { refrescar(); toast.success('Horario eliminado'); },
     onError: (e: any) => toast.error(e.message),
   });
 
-  const toggleActive = useMutation({
+  const cambiarActivo = useMutation({
     mutationFn: async ({ id, activo }: { id: string; activo: boolean }) => {
       const { error } = await supabase.from('horarios_medicos').update({ activo }).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['horarios-medico-full', medicoId] });
-    },
+    onSuccess: refrescar,
     onError: (e: any) => toast.error(e.message),
   });
 
-  const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleGuardar = (e: React.FormEvent) => {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const daysSelected = fd.getAll('dias') as string[];
-    
-    if (daysSelected.length === 0) {
-      toast.error('Seleccione al menos un día');
-      return;
+    if (!borrador) return;
+    if (borrador.dias.length === 0) { setError('Seleccione al menos un día'); return; }
+    for (const dia of borrador.dias) {
+      const msg = validarBloque({ ...borrador, dia_semana: dia }, horarios as BloqueHorario[]);
+      if (msg) { setError(msg); return; }
     }
-
-    const horaInicio = fd.get('hora_inicio') as string;
-    const horaFin = fd.get('hora_fin') as string;
-    if (horaInicio >= horaFin) {
-      toast.error('La hora de fin debe ser mayor a la hora de inicio');
-      return;
-    }
-
-    const base = {
-      medico_id: medicoId,
-      hora_inicio: horaInicio,
-      hora_fin: horaFin,
-      duracion_cita: parseInt(fd.get('duracion_cita') as string) || 30,
-      sede_id: (fd.get('sede_id') as string) || null,
-    };
-
-    // Insert one record per day
-    const inserts = daysSelected.map(d => ({ ...base, dia_semana: parseInt(d) }));
-    Promise.all(inserts.map(i => addSchedule.mutateAsync(i))).catch(() => {});
+    setError(null);
+    guardar.mutate(borrador);
   };
 
-  // Group horarios by day
-  const byDay = DIAS.map((dia, i) => ({
+  const abrirNuevo = () => { setError(null); setBorrador({ ...BORRADOR_NUEVO }); };
+  const abrirEdicion = (h: any) => {
+    setError(null);
+    setBorrador({
+      id: h.id,
+      dias: [h.dia_semana],
+      hora_inicio: h.hora_inicio.slice(0, 5),
+      hora_fin: h.hora_fin.slice(0, 5),
+      duracion_cita: h.duracion_cita,
+      sede_id: h.sede_id ?? TODAS,
+    });
+  };
+
+  const toggleDia = (d: number) => {
+    if (!borrador) return;
+    // Al editar, el bloque pertenece a un solo día.
+    if (borrador.id) { setBorrador({ ...borrador, dias: [d] }); return; }
+    const dias = borrador.dias.includes(d) ? borrador.dias.filter((x) => x !== d) : [...borrador.dias, d].sort();
+    setBorrador({ ...borrador, dias });
+  };
+
+  const byDay = DIAS_SEMANA.map((dia, i) => ({
     dia,
     diaCorto: DIAS_CORTOS[i],
     index: i,
@@ -136,8 +164,7 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
           </DialogTitle>
         </DialogHeader>
 
-        {/* Summary */}
-        <div className="flex gap-4 text-sm">
+        <div className="flex flex-wrap gap-4 text-sm">
           <div className="flex items-center gap-1.5">
             <div className="h-2 w-2 rounded-full bg-primary" />
             <span className="text-muted-foreground">{activeSlots} bloques activos</span>
@@ -146,9 +173,9 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
             <div className="h-2 w-2 rounded-full bg-muted-foreground/30" />
             <span className="text-muted-foreground">{totalSlots - activeSlots} inactivos</span>
           </div>
+          <span className="text-xs text-muted-foreground">Clic en un bloque para editarlo. Estos horarios definen los turnos que se ofrecen al agendar.</span>
         </div>
 
-        {/* Weekly grid */}
         <div className="grid grid-cols-7 gap-1.5">
           {byDay.map(({ dia, diaCorto, index, slots }) => (
             <div key={index} className="min-h-[120px]">
@@ -159,16 +186,23 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
                 <span className="sm:hidden">{diaCorto}</span>
               </div>
               <div className="border border-t-0 rounded-b-md p-1 space-y-1 min-h-[90px]">
-                {slots.length === 0 ? (
+                {isLoading ? (
+                  <p className="text-[10px] text-muted-foreground/50 text-center pt-4">…</p>
+                ) : slots.length === 0 ? (
                   <p className="text-[10px] text-muted-foreground/50 text-center pt-4">Sin horario</p>
                 ) : (
                   slots.map((h: any) => (
                     <div
                       key={h.id}
-                      className={`rounded px-1.5 py-1 text-[10px] space-y-0.5 group relative ${
-                        h.activo
-                          ? 'bg-primary/10 border border-primary/20'
-                          : 'bg-muted/50 border border-muted opacity-60'
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => abrirEdicion(h)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') abrirEdicion(h); }}
+                      className={`rounded px-1.5 py-1 text-[10px] space-y-0.5 group relative cursor-pointer hover:ring-1 hover:ring-primary/40 ${
+                        borrador?.id === h.id ? 'ring-2 ring-primary' : ''
+                      } ${h.activo
+                        ? 'bg-primary/10 border border-primary/20'
+                        : 'bg-muted/50 border border-muted opacity-60'
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -176,8 +210,12 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-4 w-4 opacity-0 group-hover:opacity-100 text-destructive"
-                          onClick={() => deleteSchedule.mutate(h.id)}
+                          className="h-4 w-4 opacity-0 group-hover:opacity-100 focus:opacity-100 text-destructive"
+                          aria-label="Eliminar bloque"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`¿Eliminar el bloque ${dia} ${h.hora_inicio.slice(0, 5)}–${h.hora_fin.slice(0, 5)}?`)) eliminar.mutate(h.id);
+                          }}
                         >
                           <Trash2 className="h-2.5 w-2.5" />
                         </Button>
@@ -186,15 +224,15 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
                         <span className="text-muted-foreground">{h.duracion_cita}min</span>
                         <Switch
                           checked={h.activo}
-                          onCheckedChange={(checked) => toggleActive.mutate({ id: h.id, activo: checked })}
+                          onClick={(e) => e.stopPropagation()}
+                          onCheckedChange={(checked) => cambiarActivo.mutate({ id: h.id, activo: checked })}
                           className="h-3 w-6 [&>span]:h-2.5 [&>span]:w-2.5"
+                          aria-label={h.activo ? 'Desactivar bloque' : 'Activar bloque'}
                         />
                       </div>
-                      {h.sedes?.nombre && (
-                        <div className="flex items-center gap-0.5 text-muted-foreground">
-                          <MapPin className="h-2 w-2" />{h.sedes.nombre}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-0.5 text-muted-foreground">
+                        <MapPin className="h-2 w-2" />{h.sedes?.nombre ?? 'Todas las sedes'}
+                      </div>
                     </div>
                   ))
                 )}
@@ -203,25 +241,30 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
           ))}
         </div>
 
-        {/* Add button */}
-        {!showAddForm ? (
-          <Button onClick={() => setShowAddForm(true)} className="w-full">
+        {!borrador ? (
+          <Button onClick={abrirNuevo} className="w-full">
             <Plus className="h-4 w-4 mr-1" />Agregar Horario
           </Button>
         ) : (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Nuevo Bloque de Horario</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                {borrador.id ? <><Pencil className="h-3.5 w-3.5" />Editar Bloque</> : 'Nuevo Bloque de Horario'}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleAdd} className="space-y-4">
-                {/* Day multi-select as checkboxes */}
+              <form onSubmit={handleGuardar} className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-xs">Días de atención</Label>
+                  <Label className="text-xs">{borrador.id ? 'Día' : 'Días de atención'}</Label>
                   <div className="flex flex-wrap gap-2">
-                    {DIAS.map((d, i) => (
+                    {DIAS_SEMANA.map((d, i) => (
                       <label key={i} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="checkbox" name="dias" value={String(i)} defaultChecked={i >= 1 && i <= 5} className="rounded" />
+                        <input
+                          type={borrador.id ? 'radio' : 'checkbox'}
+                          checked={borrador.dias.includes(i)}
+                          onChange={() => toggleDia(i)}
+                          className="rounded"
+                        />
                         <span className="text-xs">{d}</span>
                       </label>
                     ))}
@@ -231,31 +274,38 @@ export function DoctorScheduleManager({ medicoId, medicoNombre, open, onOpenChan
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Hora Inicio</Label>
-                    <Input name="hora_inicio" type="time" defaultValue="08:00" required />
+                    <Input type="time" value={borrador.hora_inicio} onChange={(e) => setBorrador({ ...borrador, hora_inicio: e.target.value })} required />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Hora Fin</Label>
-                    <Input name="hora_fin" type="time" defaultValue="12:00" required />
+                    <Input type="time" value={borrador.hora_fin} onChange={(e) => setBorrador({ ...borrador, hora_fin: e.target.value })} required />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Duración (min)</Label>
-                    <Input name="duracion_cita" type="number" defaultValue="30" min="10" max="120" />
+                    <Label className="text-xs">Duración cita (min)</Label>
+                    <Input
+                      type="number" min={5} max={240} step={5}
+                      value={borrador.duracion_cita}
+                      onChange={(e) => setBorrador({ ...borrador, duracion_cita: parseInt(e.target.value) || 0 })}
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Sede</Label>
-                    <Select name="sede_id">
-                      <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                    <Select value={borrador.sede_id} onValueChange={(v) => setBorrador({ ...borrador, sede_id: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={TODAS}>Todas las sedes</SelectItem>
                         {sedes.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
+                {error && <p className="text-sm text-destructive">{error}</p>}
+
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setShowAddForm(false)}>Cancelar</Button>
-                  <Button type="submit" size="sm" disabled={addSchedule.isPending}>
-                    {addSchedule.isPending ? 'Guardando...' : 'Guardar'}
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setBorrador(null); setError(null); }}>Cancelar</Button>
+                  <Button type="submit" size="sm" disabled={guardar.isPending}>
+                    {guardar.isPending ? 'Guardando...' : 'Guardar'}
                   </Button>
                 </div>
               </form>

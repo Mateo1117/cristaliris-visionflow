@@ -15,6 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Kanban, List, Ruler, MessageCircle } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { faltaMigracion, registrarResultadoConsulta, textoFormula, type HistoriaPorFacturar } from '@/lib/flujoAtencion';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { PacienteSelector } from '@/components/patients/PacienteSelector';
@@ -78,7 +80,7 @@ const categoriaLabel: Record<string, string> = {
   otros: 'Otros',
 };
 
-/** La migración 20261014000000 (función crear_orden) aún no está aplicada. */
+/** La migración 20261014000000 (flujo de atención y crear_orden) aún no está aplicada. */
 const esFuncionInexistente = (e: { code?: string; message?: string }) =>
   e.code === 'PGRST202' || e.code === '42883' || /crear_orden/.test(e.message ?? '');
 
@@ -143,7 +145,25 @@ export default function Orders() {
   const [abono, setAbono] = useState(0);
   const [medioPagoAbono, setMedioPagoAbono] = useState('efectivo');
   const [medioPagoSaldo, setMedioPagoSaldo] = useState('efectivo');
+  /** Historia clínica de la que viene la venta (Por facturar → "Compra: generar orden"). */
+  const [historiaId, setHistoriaId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+
+  // /ordenes?paciente=…&historia=…  abre la orden con el paciente y la fórmula de la consulta.
+  useEffect(() => {
+    const paciente = params.get('paciente');
+    if (!paciente) return;
+    const historia = params.get('historia');
+    setSelectedPaciente(paciente);
+    setHistoriaId(historia);
+    const fila = queryClient.getQueryData<{ filas: HistoriaPorFacturar[] }>(['por-facturar'])?.filas
+      .find((f) => f.historia_id === historia);
+    if (fila) setObservaciones(textoFormula(fila.formula, fila.fecha_consulta));
+    setShowForm(true);
+    setParams({}, { replace: true });
+  }, [params, setParams, queryClient]);
 
   const { data: productos = [] } = useQuery({
     queryKey: ['productos-catalogo-ordenes'],
@@ -253,6 +273,7 @@ export default function Orders() {
   const resetForm = () => {
     setSelectedPaciente(''); setItems([nuevoItem()]); setMonturaPropia(false);
     setObservaciones(''); setAbono(0); setMedioPagoAbono('efectivo'); setMedioPagoSaldo('efectivo');
+    setHistoriaId(null);
   };
 
   const createOrden = useMutation({
@@ -313,6 +334,8 @@ export default function Orders() {
         p_orden: ordenPayload,
         p_productos: productosOrden,
         p_abono: abonoInicial,
+        // La historia queda marcada como "compró" y ligada a esta orden.
+        ...(historiaId ? { p_historia_id: historiaId } : {}),
       });
 
       let orden: { id: string; numero_orden: number };
@@ -320,6 +343,11 @@ export default function Orders() {
         orden = creada as { id: string; numero_orden: number };
       } else if (esFuncionInexistente(rpcError)) {
         orden = await crearOrdenPorPasos(ordenPayload, productosOrden, abonoInicial, advertencias);
+        if (historiaId) {
+          await registrarResultadoConsulta(historiaId, 'orden', { ordenId: orden.id }).catch((e) => {
+            if (!faltaMigracion(e)) advertencias.push(`La orden se creó, pero no se pudo ligar a la historia clínica: ${e.message}`);
+          });
+        }
       } else {
         throw rpcError;
       }
@@ -332,10 +360,12 @@ export default function Orders() {
       });
       if (ne) advertencias.push('No se pudo crear la notificación interna');
 
-      return { orden, paciente: pacienteSel, total: t.total, saldo, advertencias };
+      return { orden, paciente: pacienteSel, total: t.total, saldo, advertencias, desdeFacturacion: !!historiaId };
     },
-    onSuccess: ({ orden, paciente, total, saldo, advertencias }) => {
+    onSuccess: ({ orden, paciente, total, saldo, advertencias, desdeFacturacion }) => {
       advertencias.forEach((msg) => toast.warning(msg));
+      queryClient.invalidateQueries({ queryKey: ['por-facturar'] });
+      if (desdeFacturacion) navigate('/facturacion');
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['notificaciones'] });
       queryClient.invalidateQueries({ queryKey: ['ordenes-cartera'] });
@@ -390,7 +420,12 @@ export default function Orders() {
             {/* Paciente */}
             <div className="space-y-2">
               <Label>Paciente *</Label>
-              <PacienteSelector value={selectedPaciente} onChange={setSelectedPaciente} columnas="id, nombres, apellidos, numero_documento, tipo_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)" />
+              <PacienteSelector disabled={!!historiaId} value={selectedPaciente} onChange={setSelectedPaciente} columnas="id, nombres, apellidos, numero_documento, tipo_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)" />
+              {historiaId && (
+                <p className="text-xs rounded-md bg-success/10 text-success px-2 py-1.5">
+                  Venta de la consulta: al crear la orden, la historia clínica queda marcada como "compró".
+                </p>
+              )}
               {pacienteSel?.empresas && (
                 <p className="text-xs text-muted-foreground">
                   Convenio {descuentoConvenio}% · descuento efectivo aplicado:{' '}

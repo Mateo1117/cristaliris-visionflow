@@ -138,6 +138,7 @@ export type Database = {
       }
       citas: {
         Row: {
+          hora_llegada: string | null
           created_at: string
           estado: string
           fecha: string
@@ -152,6 +153,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          hora_llegada?: string | null
           created_at?: string
           estado?: string
           fecha: string
@@ -166,6 +168,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          hora_llegada?: string | null
           created_at?: string
           estado?: string
           fecha?: string
@@ -470,6 +473,11 @@ export type Database = {
       }
       historias_clinicas: {
         Row: {
+          cita_id: string | null
+          cotizacion_id: string | null
+          estado_facturacion: string | null
+          fecha_facturacion: string | null
+          orden_id: string | null
           agudeza_visual_od: string | null
           agudeza_visual_oi: string | null
           altura_pupilar_od: number | null
@@ -521,6 +529,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cita_id?: string | null
+          cotizacion_id?: string | null
+          estado_facturacion?: string | null
+          fecha_facturacion?: string | null
+          orden_id?: string | null
           agudeza_visual_od?: string | null
           agudeza_visual_oi?: string | null
           altura_pupilar_od?: number | null
@@ -572,6 +585,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cita_id?: string | null
+          cotizacion_id?: string | null
+          estado_facturacion?: string | null
+          fecha_facturacion?: string | null
+          orden_id?: string | null
           agudeza_visual_od?: string | null
           agudeza_visual_oi?: string | null
           altura_pupilar_od?: number | null

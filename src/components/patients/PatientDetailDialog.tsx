@@ -46,8 +46,10 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
 
   const createHistoria = useMutation({
     mutationFn: async (formData: Record<string, any>) => {
+      const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from('historias_clinicas').insert({
         paciente_id: paciente.id,
+        optometra_id: user?.id ?? null,
         anamnesis: formData.anamnesis,
         antecedentes: formData.antecedentes,
         agudeza_visual_od: formData.agudeza_visual_od,
@@ -79,6 +81,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
       await actualizarDatosPaciente(paciente, formData);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['por-facturar'] });
       queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       queryClient.invalidateQueries({ queryKey: ['historias-paciente', paciente?.id] });
       setShowNewRecord(false);

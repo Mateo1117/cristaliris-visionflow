@@ -1,7 +1,8 @@
 import {
   LayoutDashboard, Users, Calendar, ClipboardList, Stethoscope,
-  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText
+  Package, Wallet, ShieldCheck, BarChart3, Settings, Eye, QrCode, UserCog, CheckSquare, FileText, Receipt
 } from 'lucide-react';
+import { usePorFacturar } from '@/lib/flujoAtencion';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import {
@@ -16,8 +17,9 @@ type NavItem = { title: string; url: string; icon: typeof LayoutDashboard; modul
 const mainItems: NavItem[] = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard, modulo: 'dashboard' },
   { title: 'Pacientes', url: '/pacientes', icon: Users, modulo: 'pacientes' },
-  { title: 'Historia Clínica', url: '/historias', icon: Stethoscope, modulo: 'historias' },
   { title: 'Agenda', url: '/agenda', icon: Calendar, modulo: 'agenda' },
+  { title: 'Historia Clínica', url: '/historias', icon: Stethoscope, modulo: 'historias' },
+  { title: 'Por facturar', url: '/facturacion', icon: Receipt, modulo: 'facturacion' },
   { title: 'Cotizaciones', url: '/cotizaciones', icon: FileText, modulo: 'cotizaciones' },
   { title: 'Órdenes', url: '/ordenes', icon: ClipboardList, modulo: 'ordenes' },
   { title: 'Control Calidad', url: '/control-calidad', icon: CheckSquare, modulo: 'control-calidad' },
@@ -43,6 +45,9 @@ export function AppSidebar() {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { canView, isLoading } = usePermissions();
+  // Contador de pacientes que salieron de consulta y no han pasado por caja.
+  const { data: porFacturar } = usePorFacturar(!isLoading && canView('facturacion'));
+  const pendientes = porFacturar?.filas.filter((f) => f.estado_facturacion === 'pendiente').length ?? 0;
 
   const renderGroup = (label: string, items: NavItem[]) => {
     // Mientras carga el rol solo mostramos los ítems sin restricción, para no
@@ -63,6 +68,11 @@ export function AppSidebar() {
                   <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium">
                     <item.icon className="h-4 w-4" />
                     {!collapsed && <span>{item.title}</span>}
+                    {item.modulo === 'facturacion' && pendientes > 0 && (
+                      <span className={`ml-auto rounded-full bg-warning text-warning-foreground text-[10px] font-semibold leading-none px-1.5 py-0.5 ${collapsed ? 'absolute top-0.5 right-0.5' : ''}`}>
+                        {pendientes}
+                      </span>
+                    )}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

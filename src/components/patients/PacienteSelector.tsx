@@ -8,7 +8,11 @@
  */
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, X } from 'lucide-react';
+import { Search, X, UserPlus } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { PatientForm } from './PatientForm';
+import { crearPaciente } from './guardarPaciente';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,12 +28,40 @@ interface Props {
   columnas?: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** Ofrece registrar al paciente ahí mismo (paciente que llega sin estar registrado). */
+  permitirCrear?: boolean;
 }
 
-export function PacienteSelector({ value, onChange, columnas, disabled, autoFocus }: Props) {
+export function PacienteSelector({ value, onChange, columnas, disabled, autoFocus, permitirCrear }: Props) {
   const [busqueda, setBusqueda] = useState('');
   const [termino, setTermino] = useState('');
   const [abierto, setAbierto] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
+  const queryClient = useQueryClient();
+  const crear = useMutation({
+    mutationFn: crearPaciente,
+    onSuccess: (id) => {
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+      setRegistrando(false);
+      setBusqueda('');
+      onChange(id);
+      toast.success('Paciente registrado');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+  // El formulario va en un portal, pero en React su "submit" burbujea hasta el
+  // formulario que contiene al selector (p. ej. Nueva cita): se corta aquí.
+  const formularioNuevo = permitirCrear && (
+    <div onSubmit={(e) => e.stopPropagation()}>
+      <PatientForm
+        open={registrando}
+        onOpenChange={setRegistrando}
+        onSubmit={(datos) => crear.mutate(datos)}
+        isPending={crear.isPending}
+        initialData={null}
+      />
+    </div>
+  );
   const contenedor = useRef<HTMLDivElement>(null);
   const { data: elegido } = usePacienteSeleccionado(value, columnas ?? COLUMNAS_LISTA);
 
@@ -83,6 +115,7 @@ export function PacienteSelector({ value, onChange, columnas, disabled, autoFocu
 
   return (
     <div className="relative" ref={contenedor}>
+      {formularioNuevo}
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
       <Input
         autoFocus={autoFocus}
@@ -108,7 +141,21 @@ export function PacienteSelector({ value, onChange, columnas, disabled, autoFocu
               {p.empresas && <span className="text-muted-foreground ml-2">· {p.empresas.razon_social} ({p.empresas.porcentaje_descuento}%)</span>}
             </button>
           ))}
+          {permitirCrear && (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm text-primary border-t hover:bg-accent flex items-center gap-1.5"
+              onClick={() => { setAbierto(false); setRegistrando(true); }}
+            >
+              <UserPlus className="h-4 w-4" />Registrar paciente nuevo
+            </button>
+          )}
         </div>
+      )}
+      {permitirCrear && !abierto && (
+        <button type="button" className="text-xs text-primary mt-1 hover:underline" onClick={() => setRegistrando(true)}>
+          + Registrar paciente nuevo
+        </button>
       )}
     </div>
   );

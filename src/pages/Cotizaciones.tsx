@@ -12,6 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Plus, FileText, TrendingUp, ArrowRightCircle, Trash2, PercentCircle, Package, Copy } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { faltaMigracion, registrarResultadoConsulta, textoFormula, type HistoriaPorFacturar } from '@/lib/flujoAtencion';
+import { useAuth } from '@/hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { PacienteSelector } from '@/components/patients/PacienteSelector';
@@ -200,12 +203,38 @@ export default function Cotizaciones() {
     [items, monturaPropia, descuentoConvenio, medioPago],
   );
 
+  /** Historia de la que viene la cotización (Por facturar → "No compra: cotizar"). */
+  const [historiaId, setHistoriaId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [params, setParams] = useSearchParams();
+
+  // /cotizaciones?paciente=…&historia=…  abre la cotización del paciente que no compró.
+  useEffect(() => {
+    const paciente = params.get('paciente');
+    if (!paciente) return;
+    setSelectedPaciente(paciente);
+    setHistoriaId(params.get('historia'));
+    setShowForm(true);
+    setParams({}, { replace: true });
+  }, [params, setParams]);
+
   const resetForm = () => {
+    setHistoriaId(null);
     setSelectedPaciente('');
     setItems([nuevoItem()]);
     setMonturaPropia(false);
     setMedioPago('efectivo');
   };
+
+  const formulaHistoria = historiaId
+    ? textoFormula(queryClient.getQueryData<{ filas: HistoriaPorFacturar[] }>(['por-facturar'])?.filas.find((f) => f.historia_id === historiaId)?.formula)
+    : '';
+  // Vigencia sugerida: 15 días.
+  const vencimientoPorDefecto = (() => {
+    const d = new Date(Date.now() - 5 * 3600 * 1000 + 15 * 86400000);
+    return d.toISOString().slice(0, 10);
+  })();
 
   const createCotizacion = useMutation({
     mutationFn: async (data: { paciente_id: string; items: CotizacionItem[]; total_estimado: number; fecha_vencimiento?: string; montura_propia: boolean; medio_pago: string }) => {
@@ -217,15 +246,26 @@ export default function Cotizaciones() {
           descuento_montura_propia: data.montura_propia ? DESCUENTO_MONTURA_PROPIA : 0,
           // Medio de pago previsto: define el descuento efectivo y el recargo del 9%.
           medio_pago: data.medio_pago,
+          ...(historiaId ? { historia_id: historiaId, formula: formulaHistoria } : {}),
         } as any,
         total_estimado: data.total_estimado,
         fecha_vencimiento: data.fecha_vencimiento || null,
+        asesor_id: user?.id ?? null,
       };
-      const { error } = await supabase.from('cotizaciones').insert(payload);
+      const { data: creada, error } = await supabase.from('cotizaciones').insert(payload).select('id').single();
       if (error) throw error;
+      // El paciente no compró: la historia queda ligada a esta cotización.
+      if (historiaId) {
+        await registrarResultadoConsulta(historiaId, 'cotizacion', { cotizacionId: creada.id }).catch((e) => {
+          if (!faltaMigracion(e)) toast.warning(`La cotización se creó, pero no se pudo ligar a la historia clínica: ${e.message}`);
+        });
+      }
+      return { desdeFacturacion: !!historiaId };
     },
-    onSuccess: () => {
+    onSuccess: ({ desdeFacturacion }) => {
       queryClient.invalidateQueries({ queryKey: ['cotizaciones'] });
+      queryClient.invalidateQueries({ queryKey: ['por-facturar'] });
+      if (desdeFacturacion) navigate('/facturacion');
       setShowForm(false);
       resetForm();
       toast.success('Cotización creada exitosamente');
@@ -301,7 +341,7 @@ export default function Cotizaciones() {
       });
       if (error) {
         if (error.code === 'PGRST202' || error.code === '42883') {
-          throw new Error('Falta aplicar la migración 20261014000000_crear_orden_transaccional.sql en la base de datos para convertir cotizaciones.');
+          throw new Error('Falta aplicar la migración 20261014000000_flujo_atencion_y_orden_transaccional.sql en la base de datos para convertir cotizaciones.');
         }
         throw error;
       }
@@ -461,7 +501,12 @@ export default function Cotizaciones() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Paciente *</Label>
-                <PacienteSelector value={selectedPaciente} onChange={setSelectedPaciente} columnas="id, nombres, apellidos, numero_documento, tipo_documento, empresa_id, empresas(razon_social, porcentaje_descuento)" />
+                <PacienteSelector disabled={!!historiaId} value={selectedPaciente} onChange={setSelectedPaciente} columnas="id, nombres, apellidos, numero_documento, tipo_documento, empresa_id, empresas(razon_social, porcentaje_descuento)" />
+                {historiaId && (
+                  <p className="text-xs rounded-md bg-info/10 text-info px-2 py-1.5 whitespace-pre-line">
+                    Cotización de la consulta (el paciente no compró).{formulaHistoria ? `\n${formulaHistoria}` : ''}
+                  </p>
+                )}
                 {pacienteSel?.empresas && (
                   <p className="text-[11px] text-success">
                     Convenio: {pacienteSel.empresas.razon_social} — {descuentoConvenio}% · efectivo aplicado: {pctEfectivo}%
@@ -471,7 +516,7 @@ export default function Cotizaciones() {
               </div>
               <div className="space-y-2">
                 <Label>Fecha Vencimiento</Label>
-                <Input name="fecha_vencimiento" type="date" />
+                <Input name="fecha_vencimiento" type="date" defaultValue={vencimientoPorDefecto} />
               </div>
               <div className="space-y-2">
                 <Label>Medio de Pago Previsto</Label>

@@ -5,12 +5,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, X, Clock, AlertTriangle } from 'lucide-react';
+import { Clock, AlertTriangle } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { PacienteSelector } from '@/components/patients/PacienteSelector';
+import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { filtroBusquedaPacientes } from '@/components/patients/patientUtils';
 import {
   DIAS_SEMANA, aHora, aMinutos, buscarCruce, calcularTurnos, dentroDeHorario, diaDeSemana,
   type BloqueHorario, type CitaOcupada, type Turno,
@@ -49,9 +51,10 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
   const [manualMedico, setManualMedico] = useState('');
   const [manualInicio, setManualInicio] = useState('08:00');
   const [manualFin, setManualFin] = useState('08:30');
-  const [paciente, setPaciente] = useState<any>(null);
-  const [busqueda, setBusqueda] = useState('');
-  const [termino, setTermino] = useState('');
+  const [pacienteId, setPacienteId] = useState('');
+  const { data: paciente } = usePacienteSeleccionado(pacienteId, 'id, nombres, apellidos, tipo_documento, numero_documento, sede_id');
+  /** Paciente que llega sin cita previa: entra directo a la sala de espera. */
+  const [yaLlego, setYaLlego] = useState(false);
   const [observaciones, setObservaciones] = useState('');
 
   // Cada apertura parte del prefijo recibido.
@@ -65,30 +68,10 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
       : null);
     setManual(false);
     setManualMedico(prefijo.medicoId ?? '');
-    setPaciente(null);
-    setBusqueda('');
+    setPacienteId('');
+    setYaLlego(false);
     setObservaciones('');
   }, [open, prefijo]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setTermino(busqueda.trim()), 300);
-    return () => clearTimeout(t);
-  }, [busqueda]);
-
-  // Búsqueda en el servidor: antes el select cargaba todos los pacientes.
-  const { data: resultados = [], isFetching: buscando } = useQuery({
-    queryKey: ['pacientes-busqueda-cita', termino],
-    queryFn: async () => {
-      const filtro = filtroBusquedaPacientes(termino);
-      if (!filtro) return [];
-      const { data, error } = await supabase.from('pacientes')
-        .select('id, nombres, apellidos, numero_documento, tipo_documento, telefono, sede_id')
-        .or(filtro).order('nombres').limit(8);
-      if (error) throw error;
-      return data;
-    },
-    enabled: open && termino.length >= 2 && !paciente,
-  });
 
   const { data: citasDia = [] } = useQuery({
     queryKey: ['citas-ocupacion', fecha],
@@ -138,17 +121,24 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
       if (e1) throw e1;
       const cruce = buscarCruce(elegido.medico_id, elegido.hora_inicio, elegido.hora_fin, actuales as any);
       if (cruce) throw new Error(`Ese horario ya está ocupado (${cruce.hora_inicio.slice(0, 5)}–${cruce.hora_fin.slice(0, 5)}). Elija otro turno.`);
+      const llegoAhora = yaLlego && fecha === hoy;
       const { error } = await supabase.from('citas').insert({
-        paciente_id: paciente.id,
+        paciente_id: pacienteId,
+        ...(llegoAhora ? { estado: 'en_espera', hora_llegada: new Date().toISOString() } : {}),
         optometra_id: elegido.medico_id,
-        sede_id: elegido.sede_id ?? (sedeId === TODOS ? paciente.sede_id ?? null : sedeId),
+        sede_id: elegido.sede_id ?? (sedeId === TODOS ? paciente?.sede_id ?? null : sedeId),
         fecha,
         hora_inicio: elegido.hora_inicio,
         hora_fin: elegido.hora_fin,
         observaciones: observaciones.trim() || null,
         origen: 'manual',
       });
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23514' || error.code === 'PGRST204') {
+          throw new Error('Para registrar la llegada falta aplicar la migración del flujo de atención. Desmarque "El paciente ya está aquí".');
+        }
+        throw error;
+      }
       return elegido;
     },
     onSuccess: (elegido) => {
@@ -172,7 +162,7 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
   })();
   const bloqueaManual = !!avisoManual && avisoManual !== 'Está fuera del horario configurado del médico';
 
-  const puedeGuardar = !!paciente && !esPasado && (manual ? !!manualMedico && !bloqueaManual : !!turno);
+  const puedeGuardar = !!pacienteId && !esPasado && (manual ? !!manualMedico && !bloqueaManual : !!turno);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -182,39 +172,7 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
           {/* Paciente */}
           <div className="space-y-2">
             <Label>Paciente *</Label>
-            {paciente ? (
-              <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/40">
-                <div className="text-sm">
-                  <span className="font-medium">{paciente.nombres} {paciente.apellidos}</span>
-                  <span className="text-muted-foreground ml-2">{paciente.tipo_documento} {paciente.numero_documento}</span>
-                  {paciente.telefono && <span className="text-muted-foreground ml-2">· {paciente.telefono}</span>}
-                </div>
-                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPaciente(null)} aria-label="Cambiar paciente">
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input autoFocus placeholder="Buscar por documento, nombre o teléfono…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className="pl-9" />
-                {termino.length >= 2 && (
-                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-64 overflow-y-auto">
-                    {resultados.length === 0 ? (
-                      <p className="text-sm text-muted-foreground px-3 py-2">{buscando ? 'Buscando…' : 'Sin resultados. Registre al paciente en el módulo Pacientes.'}</p>
-                    ) : resultados.map((p: any) => (
-                      <button
-                        type="button" key={p.id}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
-                        onClick={() => { setPaciente(p); setBusqueda(''); }}
-                      >
-                        <span className="font-medium">{p.nombres} {p.apellidos}</span>
-                        <span className="text-muted-foreground ml-2">{p.numero_documento}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <PacienteSelector value={pacienteId} onChange={setPacienteId} autoFocus permitirCrear />
           </div>
 
           {/* Fecha y filtros */}
@@ -320,6 +278,13 @@ export function NuevaCitaDialog({ open, onOpenChange, prefijo, medicos, horarios
                 </p>
               )}
             </div>
+          )}
+
+          {fecha === hoy && (
+            <label className="flex items-center gap-2 text-sm cursor-pointer rounded-md border px-3 py-2">
+              <Checkbox checked={yaLlego} onCheckedChange={(v) => setYaLlego(v === true)} />
+              El paciente ya está aquí <span className="text-muted-foreground">(pasa directo a sala de espera)</span>
+            </label>
           )}
 
           <div className="space-y-1">

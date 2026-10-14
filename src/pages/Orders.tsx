@@ -16,6 +16,7 @@ import { Plus, Trash2, Kanban, List, Ruler, MessageCircle } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { faltaMigracion, registrarResultadoConsulta, textoFormula, type HistoriaPorFacturar } from '@/lib/flujoAtencion';
+import { textoVentaDirecta, tomarVentaDirecta } from '@/lib/ventaDirecta';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { etiquetaCategoria } from '@/lib/catalogo';
@@ -145,9 +146,23 @@ export default function Orders() {
   const [medioPagoSaldo, setMedioPagoSaldo] = useState('efectivo');
   /** Historia clínica de la que viene la venta (Por facturar → "Compra: generar orden"). */
   const [historiaId, setHistoriaId] = useState<string | null>(null);
+  /** Venta directa (sin consulta): canal y fotos de la fórmula externa. */
+  const [ventaDirecta, setVentaDirecta] = useState<{ canal: string; fotos: File[] } | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+
+  // /ordenes?directa=1  viene de "Venta directa" en Por facturar.
+  useEffect(() => {
+    if (params.get('directa') !== '1') return;
+    const v = tomarVentaDirecta();
+    setParams({}, { replace: true });
+    if (!v) return;
+    setSelectedPaciente(v.pacienteId);
+    setObservaciones(textoVentaDirecta(v.canal, v.formula));
+    setVentaDirecta({ canal: v.canal, fotos: v.fotos });
+    setShowForm(true);
+  }, [params, setParams]);
 
   // /ordenes?paciente=…&historia=…  abre la orden con el paciente y la fórmula de la consulta.
   useEffect(() => {
@@ -291,6 +306,7 @@ export default function Orders() {
     setSelectedPaciente(''); setItems([nuevoItem()]); setMontura(MONTURA_VACIA);
     setObservaciones(''); setAbono(0); setMedioPagoAbono('efectivo'); setMedioPagoSaldo('efectivo');
     setHistoriaId(null);
+    setVentaDirecta(null);
   };
 
   const createOrden = useMutation({
@@ -376,6 +392,13 @@ export default function Orders() {
         throw rpcError;
       }
 
+      // Fotos de la fórmula externa (venta directa) a la carpeta de la orden.
+      for (const foto of ventaDirecta?.fotos ?? []) {
+        const ruta = `${orden.id}/formula_${Date.now()}_${foto.name.replace(/[^\w.-]/g, '_')}`;
+        const { error: fe } = await supabase.storage.from('orden-fotos').upload(ruta, foto);
+        if (fe) advertencias.push(`No se pudo subir la foto de la fórmula ${foto.name}: ${fe.message}`);
+      }
+
       // Fotos de la montura a la carpeta de la orden.
       for (const foto of montura.fotos) {
         const ruta = `${orden.id}/montura_${Date.now()}_${foto.name.replace(/[^\w.-]/g, '_')}`;
@@ -391,7 +414,7 @@ export default function Orders() {
       });
       if (ne) advertencias.push('No se pudo crear la notificación interna');
 
-      return { orden, paciente: pacienteSel, total: t.total, saldo, advertencias, desdeFacturacion: !!historiaId };
+      return { orden, paciente: pacienteSel, total: t.total, saldo, advertencias, desdeFacturacion: !!historiaId || !!ventaDirecta };
     },
     onSuccess: ({ orden, paciente, total, saldo, advertencias, desdeFacturacion }) => {
       advertencias.forEach((msg) => toast.warning(msg));
@@ -452,6 +475,11 @@ export default function Orders() {
             <div className="space-y-2">
               <Label>Paciente *</Label>
               <PacienteSelector disabled={!!historiaId} value={selectedPaciente} onChange={setSelectedPaciente} columnas="id, nombres, apellidos, numero_documento, tipo_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)" />
+              {ventaDirecta && (
+                <p className="text-xs rounded-md bg-info/10 text-info px-2 py-1.5">
+                  Venta directa sin consulta{ventaDirecta.fotos.length ? ` · ${ventaDirecta.fotos.length} foto(s) de la fórmula se guardarán con la orden` : ''}.
+                </p>
+              )}
               {historiaId && (
                 <p className="text-xs rounded-md bg-success/10 text-success px-2 py-1.5">
                   Venta de la consulta: al crear la orden, la historia clínica queda marcada como "compró".

@@ -4,8 +4,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ClipboardList, FileText, XCircle, Clock, Stethoscope, Phone, Building2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ShoppingBag, ClipboardList, FileText, XCircle, Clock, Stethoscope, Phone, Building2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { VentaDirectaDialog } from '@/components/billing/VentaDirectaDialog';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -42,6 +44,7 @@ export default function Facturacion() {
   const resueltos = filas.filter((f) => f.estado_facturacion !== 'pendiente');
   const cuenta = (r: string) => resueltos.filter((f) => f.estado_facturacion === r).length;
   const puedeEscribir = canWrite('facturacion');
+  const [ventaDirecta, setVentaDirecta] = useState(false);
 
   const sinCompra = useMutation({
     mutationFn: (h: HistoriaPorFacturar) => registrarResultadoConsulta(h.historia_id, 'sin_compra'),
@@ -57,7 +60,12 @@ export default function Facturacion() {
 
   return (
     <AppLayout>
-      <PageHeader title="Por facturar" description="Pacientes que salieron de consulta: genere la orden si compra o la cotización si no compra" />
+      <PageHeader title="Por facturar" description="Pacientes que salieron de consulta: genere la orden si compra o la cotización si no compra">
+        {puedeEscribir && (
+          <Button onClick={() => setVentaDirecta(true)}><ShoppingBag className="h-4 w-4 mr-1" />Venta directa (sin consulta)</Button>
+        )}
+      </PageHeader>
+      <VentaDirectaDialog open={ventaDirecta} onOpenChange={setVentaDirecta} />
 
       {data?.sinMigracion && (
         <Alert className="mb-4">

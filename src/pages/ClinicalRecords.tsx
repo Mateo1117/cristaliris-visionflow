@@ -15,6 +15,8 @@ import { Plus, Search, Eye, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { PacienteSelector } from '@/components/patients/PacienteSelector';
+import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
 import { hoyColombia, toFechaColombia } from '@/lib/businessDays';
 import { calcularEdad } from '@/components/patients/patientUtils';
 import { printHtmlDocument } from '@/lib/printing/thermal';
@@ -152,19 +154,7 @@ export default function ClinicalRecords() {
     },
   });
 
-  const { data: pacientes = [] } = useQuery({
-    queryKey: ['pacientes-select'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('pacientes')
-        .select('id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por')
-        .order('nombres');
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const pacienteSeleccionado = pacientes.find((p: any) => p.id === selectedPaciente);
+  const { data: pacienteSeleccionado } = usePacienteSeleccionado(selectedPaciente, 'id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por');
   const edadSeleccionado = calcularEdad(pacienteSeleccionado?.fecha_nacimiento);
 
   const num = (v: any) => (v !== undefined && v !== '' && v !== null ? parseFloat(v) : null);
@@ -223,7 +213,7 @@ export default function ClinicalRecords() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['historias'] });
       queryClient.invalidateQueries({ queryKey: ['pacientes'] });
-      queryClient.invalidateQueries({ queryKey: ['pacientes-select'] });
+      queryClient.invalidateQueries({ queryKey: ['paciente-seleccionado'] });
       setShowForm(false);
       setSelectedPaciente(null);
       toast.success('Historia clínica creada exitosamente');
@@ -423,14 +413,7 @@ export default function ClinicalRecords() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="space-y-2 md:col-span-2">
                     <Label>Paciente *</Label>
-                    <Select onValueChange={setSelectedPaciente}>
-                      <SelectTrigger><SelectValue placeholder="Seleccione paciente" /></SelectTrigger>
-                      <SelectContent>
-                        {pacientes.map((p: any) => (
-                          <SelectItem key={p.id} value={p.id}>{p.tipo_documento} {p.numero_documento} — {p.nombres} {p.apellidos}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <PacienteSelector value={selectedPaciente} onChange={(id) => setSelectedPaciente(id || null)} columnas="id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por" />
                   </div>
                   <div className="space-y-2">
                     <Label>Edad</Label>

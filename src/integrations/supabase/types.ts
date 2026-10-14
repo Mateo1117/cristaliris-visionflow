@@ -907,6 +907,7 @@ export type Database = {
       }
       orden_productos: {
         Row: {
+          cantidad: number
           ciclo_garantia: number | null
           codigo_qr: string | null
           comision_financiera: number | null
@@ -942,6 +943,7 @@ export type Database = {
           utilidad_calculada: number | null
         }
         Insert: {
+          cantidad?: number
           ciclo_garantia?: number | null
           codigo_qr?: string | null
           comision_financiera?: number | null
@@ -977,6 +979,7 @@ export type Database = {
           utilidad_calculada?: number | null
         }
         Update: {
+          cantidad?: number
           ciclo_garantia?: number | null
           codigo_qr?: string | null
           comision_financiera?: number | null

@@ -17,6 +17,9 @@ import { Plus, Trash2, Kanban, List, Ruler, MessageCircle } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { PacienteSelector } from '@/components/patients/PacienteSelector';
+import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
+import { registrarAplicacionDirecta } from '@/components/billing/abonosDb';
 import { toast } from 'sonner';
 import {
   MEDIOS_PAGO,
@@ -75,6 +78,62 @@ const categoriaLabel: Record<string, string> = {
   otros: 'Otros',
 };
 
+/** La migración 20261014000000 (función crear_orden) aún no está aplicada. */
+const esFuncionInexistente = (e: { code?: string; message?: string }) =>
+  e.code === 'PGRST202' || e.code === '42883' || /crear_orden/.test(e.message ?? '');
+
+/**
+ * Respaldo mientras no exista `crear_orden`: los mismos pasos de antes, pero
+ * el abono queda con su usuario y su fila en aplicacion_abonos, y si fallan
+ * los productos la orden se anula en vez de quedar con saldo en cartera.
+ */
+async function crearOrdenPorPasos(
+  ordenPayload: Record<string, any>,
+  productos: Record<string, any>[],
+  abonoInicial: { monto: number; medio_pago: string } | null,
+  advertencias: string[],
+): Promise<{ id: string; numero_orden: number }> {
+  const { data: orden, error: oe } = await supabase.from('ordenes').insert(ordenPayload as any).select('id, numero_orden').single();
+  if (oe) throw oe;
+
+  const { error: pe } = await supabase.from('orden_productos').insert(productos.map((p) => ({ ...p, orden_id: orden.id })) as any);
+  if (pe) {
+    // Sin DELETE por RLS: se deja en cero para que no infle cartera ni ventas.
+    await supabase.from('ordenes').update({
+      subtotal: 0, total_final: 0, saldo_pendiente: 0, estado_pago: 'pagado',
+      observaciones: `ANULADA: no se pudieron guardar los productos (${pe.message})`,
+    }).eq('id', orden.id);
+    throw new Error(`No se pudieron guardar los productos; la orden quedó anulada. ${pe.message}`);
+  }
+
+  if (abonoInicial) {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: abonoCreado, error: ae } = await supabase.from('abonos').insert({
+      paciente_id: ordenPayload.paciente_id,
+      orden_id: orden.id,
+      monto: abonoInicial.monto,
+      medio_pago: abonoInicial.medio_pago,
+      observaciones: 'Abono inicial al crear orden',
+      registrado_por: user?.id ?? null,
+    }).select('id').single();
+    if (ae) {
+      // El saldo se guardó ya descontado: se repone para que la cartera cuadre.
+      await supabase.from('ordenes').update({
+        saldo_pendiente: ordenPayload.total_final,
+        estado_pago: 'pendiente',
+      }).eq('id', orden.id);
+      advertencias.push(`La orden se creó, pero el abono inicial no se registró (${ae.message}). Regístrelo desde Facturación.`);
+    } else {
+      try {
+        await registrarAplicacionDirecta({ abono_id: abonoCreado.id, orden_id: orden.id, monto_aplicado: abonoInicial.monto, usuario_id: user?.id });
+      } catch (e: any) {
+        advertencias.push(`El abono se registró pero no su aplicación a la orden: ${e.message}`);
+      }
+    }
+  }
+  return orden;
+}
+
 export default function Orders() {
   const [showForm, setShowForm] = useState(false);
   const [selectedPaciente, setSelectedPaciente] = useState('');
@@ -85,18 +144,6 @@ export default function Orders() {
   const [medioPagoAbono, setMedioPagoAbono] = useState('efectivo');
   const [medioPagoSaldo, setMedioPagoSaldo] = useState('efectivo');
   const queryClient = useQueryClient();
-
-  const { data: pacientes = [] } = useQuery({
-    queryKey: ['pacientes-ordenes'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('pacientes')
-        .select('id, nombres, apellidos, numero_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)')
-        .order('nombres');
-      if (error) throw error;
-      return data;
-    },
-  });
 
   const { data: productos = [] } = useQuery({
     queryKey: ['productos-catalogo-ordenes'],
@@ -116,7 +163,7 @@ export default function Orders() {
     },
   });
 
-  const pacienteSel = pacientes.find((p: any) => p.id === selectedPaciente);
+  const { data: pacienteSel } = usePacienteSeleccionado(selectedPaciente, 'id, nombres, apellidos, numero_documento, tipo_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)');
   const descuentoConvenio: number = (pacienteSel?.empresas?.porcentaje_descuento as number) || 0;
 
   // Descuento realmente aplicable: el del convenio menos 5 puntos si el medio de pago
@@ -220,7 +267,7 @@ export default function Orders() {
       const saldo = Math.max(0, t.total - (abono || 0));
       if (abono > t.total) throw new Error('El abono inicial no puede superar el total de la orden');
 
-      const { data: orden, error: oe } = await supabase.from('ordenes').insert({
+      const ordenPayload = {
         paciente_id: selectedPaciente,
         empresa_id: pacienteSel?.empresa_id || null,
         modalidad_pago: medioPagoSaldo,
@@ -238,17 +285,14 @@ export default function Orders() {
         saldo_pendiente: saldo,
         estado_pago: saldo === 0 ? 'pagado' : (abono > 0 ? 'parcial' : 'pendiente'),
         observaciones: observaciones || null,
-      }).select('id, numero_orden').single();
-      if (oe) throw oe;
+      };
 
       const productosOrden = lineas.map((it, i) => ({
-        orden_id: orden.id,
         tipo_producto: it.tipo_producto || 'lente',
         descripcion: it.descripcion,
-        // Precio NETO de descuentos de convenio (cantidad × precio − descuento de la
-        // línea). Los reportes de utilidad asumen que precio_venta ya viene neto.
-        // LIMITACIÓN: `orden_productos` no tiene columna `cantidad`, así que la
-        // cantidad queda embebida en el precio total de la línea (ver utilityCalc.ts).
+        cantidad: Math.max(1, it.cantidad || 1),
+        // Precio NETO de la línea: cantidad × precio unitario − descuentos de
+        // convenio. Los reportes de utilidad asumen que precio_venta ya viene neto.
         precio_venta: t.lineas[i].neto,
         producto_catalogo_id: it.producto_catalogo_id || null,
         laboratorio_id: it.laboratorio_id || null,
@@ -258,21 +302,26 @@ export default function Orders() {
           ? it.medidas_progresivo as any
           : null,
       }));
-      const { error: pe } = await supabase.from('orden_productos').insert(productosOrden);
-      if (pe) throw pe;
 
+      const abonoInicial = abono > 0 ? { monto: abono, medio_pago: medioPagoAbono } : null;
       const advertencias: string[] = [];
 
-      // Abono inicial
-      if (abono > 0) {
-        const { error: ae } = await supabase.from('abonos').insert({
-          paciente_id: selectedPaciente,
-          orden_id: orden.id,
-          monto: abono,
-          medio_pago: medioPagoAbono,
-          observaciones: `Abono inicial al crear orden`,
-        });
-        if (ae) advertencias.push(`La orden se creó pero el abono inicial no se registró: ${ae.message}`);
+      // Orden, productos, abono inicial y su imputación se guardan en UNA
+      // transacción (función crear_orden): antes eran pasos sueltos y un fallo
+      // a mitad dejaba órdenes sin productos o con el saldo descontado sin abono.
+      const { data: creada, error: rpcError } = await (supabase.rpc as any)('crear_orden', {
+        p_orden: ordenPayload,
+        p_productos: productosOrden,
+        p_abono: abonoInicial,
+      });
+
+      let orden: { id: string; numero_orden: number };
+      if (!rpcError) {
+        orden = creada as { id: string; numero_orden: number };
+      } else if (esFuncionInexistente(rpcError)) {
+        orden = await crearOrdenPorPasos(ordenPayload, productosOrden, abonoInicial, advertencias);
+      } else {
+        throw rpcError;
       }
 
       // Notificación interna automática (no crítica)
@@ -341,17 +390,7 @@ export default function Orders() {
             {/* Paciente */}
             <div className="space-y-2">
               <Label>Paciente *</Label>
-              <Select value={selectedPaciente} onValueChange={setSelectedPaciente}>
-                <SelectTrigger><SelectValue placeholder="Seleccione paciente" /></SelectTrigger>
-                <SelectContent>
-                  {pacientes.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.numero_documento} — {p.nombres} {p.apellidos}
-                      {p.empresas ? ` · ${p.empresas.razon_social} (${p.empresas.porcentaje_descuento}%)` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PacienteSelector value={selectedPaciente} onChange={setSelectedPaciente} columnas="id, nombres, apellidos, numero_documento, tipo_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)" />
               {pacienteSel?.empresas && (
                 <p className="text-xs text-muted-foreground">
                   Convenio {descuentoConvenio}% · descuento efectivo aplicado:{' '}

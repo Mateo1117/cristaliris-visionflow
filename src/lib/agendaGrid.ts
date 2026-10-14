@@ -48,3 +48,39 @@ export const sumarDias = (fecha: string, dias: number): string => {
   base.setUTCDate(base.getUTCDate() + dias);
   return base.toISOString().split('T')[0];
 };
+
+/** Día de la semana de 'yyyy-MM-dd' (0 = domingo), sin zonas horarias. */
+const diaSemanaUTC = (fecha: string): number => {
+  const [a, m, d] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d)).getUTCDay();
+};
+
+/** Lunes de la semana de la fecha. */
+export const inicioSemana = (fecha: string): string => sumarDias(fecha, -((diaSemanaUTC(fecha) + 6) % 7));
+
+/** Los 7 días (lunes a domingo) de la semana de la fecha. */
+export const diasDeSemana = (fecha: string): string[] => {
+  const lunes = inicioSemana(fecha);
+  return Array.from({ length: 7 }, (_, i) => sumarDias(lunes, i));
+};
+
+/** Primer día del mes de la fecha. */
+export const inicioMes = (fecha: string): string => `${fecha.slice(0, 7)}-01`;
+
+/** Suma meses conservando el día 1 (para navegar entre meses). */
+export const sumarMeses = (fecha: string, meses: number): string => {
+  const [a, m] = fecha.split('-').map(Number);
+  const base = new Date(Date.UTC(a, m - 1 + meses, 1));
+  return base.toISOString().slice(0, 10);
+};
+
+/** Cuadrícula del mes: semanas completas de lunes a domingo que lo cubren. */
+export const cuadriculaMes = (fecha: string): string[][] => {
+  const primero = inicioMes(fecha);
+  const ultimo = sumarDias(sumarMeses(primero, 1), -1);
+  const semanas: string[][] = [];
+  for (let lunes = inicioSemana(primero); lunes <= ultimo; lunes = sumarDias(lunes, 7)) {
+    semanas.push(Array.from({ length: 7 }, (_, i) => sumarDias(lunes, i)));
+  }
+  return semanas;
+};

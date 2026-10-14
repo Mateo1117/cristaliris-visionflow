@@ -10,11 +10,12 @@ describe('venta directa', () => {
     const t = textoVentaDirecta('llamada', {
       ...FORMULA_VACIA,
       od: { esfera: '-1.25', cilindro: '-0.50', eje: '90', adicion: '' },
-      dp: '62', tipo_lente: 'Progresivo', emitida_por: 'Dr. Ruiz', notas: 'Entregar a domicilio',
+      dp: '62', altura_od: '18', altura_oi: '18.5', tipo_lente: 'Progresivo', emitida_por: 'Dr. Ruiz', notas: 'Entregar a domicilio',
     });
     expect(t).toContain('Venta directa sin consulta (Llamada).');
     expect(t).toContain('Fórmula externa de Dr. Ruiz:');
     expect(t).toContain('OD Esf -1.25 Cil -0.50 Eje 90° · OI — · DP 62');
+    expect(t).toContain('Altura pupilar: OD 18 · OI 18.5');
     expect(t).toContain('Lente: Progresivo');
     expect(t).toContain('Entregar a domicilio');
   });

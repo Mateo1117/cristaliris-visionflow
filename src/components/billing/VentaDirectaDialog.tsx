@@ -81,8 +81,12 @@ export function VentaDirectaDialog({ open, onOpenChange }: Props) {
                 </Fragment>
               ))}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1"><Label className="text-xs">DP</Label><Input className="h-8" inputMode="decimal" value={formula.dp} onChange={(e) => setFormula({ ...formula, dp: e.target.value })} placeholder="62" /></div>
+              <div className="space-y-1"><Label className="text-xs">Altura pupilar OD</Label><Input className="h-8" inputMode="decimal" value={formula.altura_od} onChange={(e) => setFormula({ ...formula, altura_od: e.target.value })} placeholder="18" /></div>
+              <div className="space-y-1"><Label className="text-xs">Altura pupilar OI</Label><Input className="h-8" inputMode="decimal" value={formula.altura_oi} onChange={(e) => setFormula({ ...formula, altura_oi: e.target.value })} placeholder="18" /></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="space-y-1"><Label className="text-xs">Tipo de lente</Label><Input className="h-8" value={formula.tipo_lente} onChange={(e) => setFormula({ ...formula, tipo_lente: e.target.value })} placeholder="Monofocal, progresivo…" /></div>
               <div className="space-y-1"><Label className="text-xs">Emitida por</Label><Input className="h-8" value={formula.emitida_por} onChange={(e) => setFormula({ ...formula, emitida_por: e.target.value })} placeholder="Dr. / óptica" /></div>
             </div>

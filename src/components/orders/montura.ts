@@ -23,5 +23,9 @@ export const precioMontura = (m: MonturaOrdenValor) =>
   m.modo === 'ninguna' ? 0 : Number((m.precio || '').replace(/[^\d]/g, '')) || 0;
 
 /** Descripción con la que se guarda la línea de la montura. */
-export const descripcionMontura = (m: MonturaOrdenValor) =>
-  ['Montura', m.descripcion.trim(), m.referencia.trim() && `Ref. ${m.referencia.trim()}`].filter(Boolean).join(' · ');
+export const descripcionMontura = (m: MonturaOrdenValor) => {
+  const desc = m.descripcion.trim();
+  // Si ya dice "Montura…" no se repite ("Montura · Montura").
+  const partes = [/^montura\b/i.test(desc) ? '' : 'Montura', desc, m.referencia.trim() && `Ref. ${m.referencia.trim()}`];
+  return partes.filter(Boolean).join(' · ') || 'Montura';
+};

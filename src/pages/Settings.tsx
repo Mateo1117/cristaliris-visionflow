@@ -591,6 +591,36 @@ function PrintSettingsTab() {
 
   return (
     <div className="space-y-4">
+      {/* Qué se imprime en la óptica y en qué papel */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base">Qué se imprime y en qué papel</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>Documento</TableHead><TableHead>Dónde</TableHead><TableHead>Papel recomendado</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {[
+                ['Etiqueta del trabajo (QR)', 'Orden → Imprimir', 'Rollo de etiquetas térmicas 50×30 o 60×40 mm (el QR se lee mejor desde 30 mm de alto)'],
+                ['Etiqueta de inventario (montura)', 'Inventario → detalle', 'El mismo rollo de etiquetas'],
+                ['Recibo para el paciente', 'Orden → Imprimir', 'Papel térmico de 58 u 80 mm de ancho'],
+                ['Fórmula óptica', 'Historia clínica → Fórmula', 'Hoja carta en impresora normal'],
+                ['Agenda del día', 'Agenda → Lista → Imprimir', 'Hoja carta'],
+              ].map(([doc, donde, papel]) => (
+                <TableRow key={doc}>
+                  <TableCell className="font-medium text-sm">{doc}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{donde}</TableCell>
+                  <TableCell className="text-sm">{papel}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <p className="text-xs text-muted-foreground px-4 py-3 border-t">
+            Etiquetas y recibos usan los tamaños de abajo. La impresora térmica se conecta una sola vez desde la orden (Imprimir → Conectar); si no imprime, use PDF con ese tamaño de papel, escala 100 % y sin márgenes.
+          </p>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent className="pt-6 text-sm text-muted-foreground">
           Define el tamaño exacto del medio (en milímetros). El contenido (fuentes,

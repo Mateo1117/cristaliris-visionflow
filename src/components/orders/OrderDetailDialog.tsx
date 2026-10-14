@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,8 @@ import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2, Receipt, Tag, Usb, Pencil, X } from 'lucide-react';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
-import { printReceiptUSB, printLabelUSB, pickUsbPrinter } from '@/lib/printing/escpos';
+import { printReceiptUSB, printLabelUSB, pickUsbPrinter, isUsbPrinterConnected } from '@/lib/printing/escpos';
+import { loadPrintSettings } from '@/lib/printing/printSettings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -378,9 +379,15 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   };
 
   const pairUsb = async () => {
-    try { await pickUsbPrinter(); toast.success('Impresora USB vinculada'); }
+    try { await pickUsbPrinter(); setUsbConectada(true); toast.success('Impresora conectada'); }
     catch (e: any) { if (e.name !== 'NotFoundError') toast.error(e.message); }
   };
+
+  const tamanos = loadPrintSettings();
+  const [usbConectada, setUsbConectada] = useState(false);
+  useEffect(() => {
+    if (open) isUsbPrinterConnected().then(setUsbConectada).catch(() => setUsbConectada(false));
+  }, [open]);
 
   const qrUrl = item
     ? `${window.location.origin}/scan?tipo=orden&id=${item.id}` +
@@ -469,7 +476,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
           <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="detalle">Detalle</TabsTrigger>
             <TabsTrigger value="costos">Costos</TabsTrigger>
-            <TabsTrigger value="qr">QR</TabsTrigger>
+            <TabsTrigger value="qr">Imprimir</TabsTrigger>
             <TabsTrigger value="fotos">Fotos</TabsTrigger>
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
@@ -636,39 +643,62 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
             )}
           </TabsContent>
 
-          <TabsContent value="qr" className="flex flex-col items-center gap-3 py-4">
-            <div className="text-2xl font-bold tracking-widest text-primary">{numeroOrdenLabel}</div>
-            <QRCodeSVG
-              id="qr-print-area"
-              value={qrUrl}
-              size={256}
-              level="M"
-              includeMargin
-            />
-            <p className="text-[10px] text-muted-foreground text-center break-all font-mono">{item.id}</p>
-            {item.numero_montura && <p className="text-xs"># Montura: <span className="font-medium">{item.numero_montura}</span></p>}
-            <div className="w-full pt-2 space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center">
-                Impresión recomendada · USB directo (sin drivers)
+          <TabsContent value="qr" className="space-y-4 py-2">
+            {/* Lo que identifica el trabajo: el mismo QR que lleva la etiqueta */}
+            <div className="flex items-center gap-4 rounded-lg border p-3">
+              <QRCodeSVG id="qr-print-area" value={qrUrl} size={112} level="M" includeMargin={false} />
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-xl font-bold tracking-wider text-primary">{numeroOrdenLabel}</p>
+                <p className="text-sm font-medium truncate">{item.paciente_nombre}</p>
+                <p className="text-xs text-muted-foreground truncate">{item.descripcion}</p>
+                <p className="text-xs text-muted-foreground">
+                  {item.laboratorio_nombre}{item.numero_montura ? ` · Montura ${item.numero_montura}` : ''}
+                </p>
               </div>
-              <div className="flex flex-wrap gap-2 justify-center">
-                <Button onClick={printLabelUsb} size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta</Button>
-                <Button onClick={printReceiptUsb} size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo</Button>
-                <Button onClick={pairUsb} variant="ghost" size="sm"><Usb className="h-4 w-4 mr-1" />Vincular</Button>
+            </div>
+
+            {/* Qué se imprime y en qué tamaño (los tamaños vienen de Configuración → Impresión) */}
+            {([
+              {
+                titulo: 'Etiqueta del trabajo',
+                icono: Tag,
+                para: 'Se pega en el sobre o la bolsa que va al laboratorio. Lleva el QR para escanear cada cambio de etapa.',
+                tam: tamanos.label,
+                usb: printLabelUsb,
+                pdf: printLabel,
+              },
+              {
+                titulo: 'Recibo para el paciente',
+                icono: Receipt,
+                para: 'Comprobante con el número de orden y el valor.',
+                tam: tamanos.receipt,
+                usb: printReceiptUsb,
+                pdf: printReceipt,
+              },
+            ] as const).map((d) => (
+              <div key={d.titulo} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium flex items-center gap-1.5"><d.icono className="h-4 w-4 text-primary" />{d.titulo}
+                    <Badge variant="secondary" className="text-[10px] font-normal">{d.tam.widthMm}×{d.tam.heightMm} mm</Badge>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{d.para}</p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <Button size="sm" onClick={d.usb}><Printer className="h-4 w-4 mr-1" />Imprimir</Button>
+                  <Button size="sm" variant="outline" onClick={d.pdf} title="Abre el diálogo de impresión del navegador">PDF</Button>
+                </div>
               </div>
-              <p className="text-[10px] text-muted-foreground text-center px-2 leading-tight">
-                Conecta la JAL-838L por USB y pulsa <b>Vincular</b> la primera vez. Envía los bytes ESC/POS y TSPL directos a la impresora — evita el diálogo del navegador.
+            ))}
+
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
+              <p className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5">
+                  <Usb className="h-3.5 w-3.5" />
+                  {usbConectada ? 'Impresora térmica conectada.' : 'Impresora térmica sin conectar.'}
+                </span>
+                {!usbConectada && <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={pairUsb}>Conectar (solo la primera vez)</Button>}
               </p>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground text-center pt-2">
-                Respaldo (PDF por driver del sistema)
-              </div>
-              <div className="flex flex-wrap gap-2 justify-center">
-                <Button onClick={printLabel} variant="outline" size="sm"><Tag className="h-4 w-4 mr-1" />Etiqueta PDF</Button>
-                <Button onClick={printReceipt} variant="outline" size="sm"><Receipt className="h-4 w-4 mr-1" />Recibo PDF</Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground text-center px-2 leading-tight">
-                En el diálogo del navegador: <b>Tamaño de papel = 60×40 mm</b> para etiqueta o <b>30×50 mm</b> para recibo, <b>Escala 100%</b>, márgenes <b>Ninguno</b>.
-              </p>
+              <p>Si no imprime, use <b>PDF</b> y en el diálogo elija ese tamaño de papel, escala 100 % y sin márgenes. Los tamaños se cambian en Configuración → Impresión.</p>
             </div>
           </TabsContent>
 

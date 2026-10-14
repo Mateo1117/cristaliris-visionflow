@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Building2, Beaker, Printer, RotateCcw, Save, ArrowLeftRight, CalendarDays } from 'lucide-react';
+import { Plus, Building2, Beaker, Printer, RotateCcw, Save, ArrowLeftRight, CalendarDays, Pencil, Trash2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -42,9 +43,12 @@ import {
   type LabelCalibration,
 } from '@/lib/printing/calibration';
 
+type Tabla = 'sedes' | 'laboratorios';
+
 export default function SettingsPage() {
-  const [showSedeForm, setShowSedeForm] = useState(false);
-  const [showLabForm, setShowLabForm] = useState(false);
+  /** Sede o laboratorio en edición: {} = nuevo, con id = editar, null = cerrado. */
+  const [sedeEdit, setSedeEdit] = useState<Record<string, any> | null>(null);
+  const [labEdit, setLabEdit] = useState<Record<string, any> | null>(null);
   const queryClient = useQueryClient();
 
   const { data: sedes = [] } = useQuery({
@@ -65,49 +69,97 @@ export default function SettingsPage() {
     },
   });
 
-  const createSede = useMutation({
-    mutationFn: async (formData: Record<string, any>) => {
-      const { error } = await supabase.from('sedes').insert({
-        nombre: formData.nombre,
-        direccion: formData.direccion || null,
-        telefono: formData.telefono || null,
-      });
+  const refrescar = (tabla: Tabla) => {
+    queryClient.invalidateQueries({ queryKey: [tabla === 'sedes' ? 'sedes-config' : 'labs-config'] });
+    // Listas de sedes y laboratorios en el resto de la app.
+    queryClient.invalidateQueries({ queryKey: ['sedes-activas'] });
+    queryClient.invalidateQueries({ queryKey: ['sedes-agenda'] });
+    queryClient.invalidateQueries({ queryKey: ['sedes-schedule'] });
+  };
+
+  const guardar = useMutation({
+    mutationFn: async ({ tabla, id, fila }: { tabla: Tabla; id?: string; fila: Record<string, any> }) => {
+      const { error } = id
+        ? await supabase.from(tabla).update(fila as any).eq('id', id)
+        : await supabase.from(tabla).insert(fila as any);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sedes-config'] });
-      setShowSedeForm(false);
-      toast.success('Sede creada');
+    onSuccess: (_, { tabla, id }) => {
+      refrescar(tabla);
+      if (tabla === 'sedes') setSedeEdit(null); else setLabEdit(null);
+      toast.success(`${tabla === 'sedes' ? 'Sede' : 'Laboratorio'} ${id ? 'actualizado' : 'creado'}`);
     },
     onError: (e: any) => toast.error(e.message),
   });
 
-  const createLab = useMutation({
-    mutationFn: async (formData: Record<string, any>) => {
-      const { error } = await supabase.from('laboratorios').insert({
-        nombre: formData.nombre,
-        contacto: formData.contacto || null,
-        telefono: formData.telefono || null,
-        email: formData.email || null,
-        tiempo_promedio_entrega: parseInt(formData.tiempo_promedio_entrega) || 3,
-      });
+  const cambiarEstado = useMutation({
+    mutationFn: async ({ tabla, id, activo }: { tabla: Tabla; id: string; activo: boolean }) => {
+      const campo = tabla === 'sedes' ? 'estado_activa' : 'estado_activo';
+      const { error } = await supabase.from(tabla).update({ [campo]: activo } as any).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['labs-config'] });
-      setShowLabForm(false);
-      toast.success('Laboratorio creado');
+    onSuccess: (_, { tabla, activo }) => {
+      refrescar(tabla);
+      toast.success(activo ? 'Activado' : 'Desactivado: ya no aparece para nuevos registros');
     },
     onError: (e: any) => toast.error(e.message),
   });
 
-  const handleSubmitForm = (mutate: any, close: () => void) => (e: React.FormEvent<HTMLFormElement>) => {
+  const eliminar = useMutation({
+    mutationFn: async ({ tabla, id }: { tabla: Tabla; id: string; nombre: string }) => {
+      const { error } = await supabase.from(tabla).delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { tabla, nombre }) => {
+      refrescar(tabla);
+      toast.success(`"${nombre}" eliminado`);
+    },
+    onError: (e: any, { tabla, id, nombre }) => {
+      // 23503: otras tablas lo referencian (pacientes, citas, órdenes, garantías…).
+      if (e.code === '23503') {
+        if (confirm(`"${nombre}" ya se usó en registros del sistema y no se puede eliminar sin perder historial.\n\n¿Desactivarlo en su lugar?`)) {
+          cambiarEstado.mutate({ tabla, id, activo: false });
+        }
+        return;
+      }
+      toast.error(e.message);
+    },
+  });
+
+  const enviarSede = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const data: Record<string, any> = {};
-    fd.forEach((v, k) => { data[k] = v; });
-    mutate(data);
+    guardar.mutate({
+      tabla: 'sedes', id: sedeEdit?.id,
+      fila: { nombre: String(fd.get('nombre')).trim(), direccion: (fd.get('direccion') as string) || null, telefono: (fd.get('telefono') as string) || null },
+    });
   };
+
+  const enviarLab = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    guardar.mutate({
+      tabla: 'laboratorios', id: labEdit?.id,
+      fila: {
+        nombre: String(fd.get('nombre')).trim(),
+        contacto: (fd.get('contacto') as string) || null,
+        telefono: (fd.get('telefono') as string) || null,
+        email: (fd.get('email') as string) || null,
+        tiempo_promedio_entrega: parseInt(fd.get('tiempo_promedio_entrega') as string) || 3,
+      },
+    });
+  };
+
+  const acciones = (tabla: Tabla, fila: any, activo: boolean, editar: () => void) => (
+    <div className="flex items-center justify-end gap-1">
+      <Switch checked={activo} onCheckedChange={(v) => cambiarEstado.mutate({ tabla, id: fila.id, activo: v })} aria-label={activo ? 'Desactivar' : 'Activar'} />
+      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={editar} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label="Eliminar"
+        onClick={() => { if (confirm(`¿Eliminar "${fila.nombre}"?`)) eliminar.mutate({ tabla, id: fila.id, nombre: fila.nombre }); }}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
 
   return (
     <AppLayout>
@@ -131,7 +183,7 @@ export default function SettingsPage() {
 
         <TabsContent value="sedes">
           <div className="flex justify-end mb-3">
-            <Button onClick={() => setShowSedeForm(true)}><Plus className="h-4 w-4 mr-1" />Nueva Sede</Button>
+            <Button onClick={() => setSedeEdit({})}><Plus className="h-4 w-4 mr-1" />Nueva Sede</Button>
           </div>
           <Card>
             <Table>
@@ -140,14 +192,16 @@ export default function SettingsPage() {
                 <TableHead>Dirección</TableHead>
                 <TableHead>Teléfono</TableHead>
                 <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {sedes.map((s: any) => (
-                  <TableRow key={s.id}>
+                  <TableRow key={s.id} className={s.estado_activa ? '' : 'opacity-60'}>
                     <TableCell className="font-medium flex items-center gap-2"><Building2 className="h-4 w-4 text-muted-foreground" />{s.nombre}</TableCell>
                     <TableCell className="text-sm">{s.direccion || '—'}</TableCell>
                     <TableCell className="text-sm">{s.telefono || '—'}</TableCell>
                     <TableCell><Badge variant={s.estado_activa ? 'default' : 'secondary'}>{s.estado_activa ? 'Activa' : 'Inactiva'}</Badge></TableCell>
+                    <TableCell>{acciones('sedes', s, s.estado_activa, () => setSedeEdit(s))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -157,7 +211,7 @@ export default function SettingsPage() {
 
         <TabsContent value="laboratorios">
           <div className="flex justify-end mb-3">
-            <Button onClick={() => setShowLabForm(true)}><Plus className="h-4 w-4 mr-1" />Nuevo Laboratorio</Button>
+            <Button onClick={() => setLabEdit({})}><Plus className="h-4 w-4 mr-1" />Nuevo Laboratorio</Button>
           </div>
           <Card>
             <Table>
@@ -167,15 +221,17 @@ export default function SettingsPage() {
                 <TableHead>Teléfono</TableHead>
                 <TableHead>Tiempo Entrega</TableHead>
                 <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {labs.map((l: any) => (
-                  <TableRow key={l.id}>
+                  <TableRow key={l.id} className={l.estado_activo ? '' : 'opacity-60'}>
                     <TableCell className="font-medium flex items-center gap-2"><Beaker className="h-4 w-4 text-muted-foreground" />{l.nombre}</TableCell>
                     <TableCell className="text-sm">{l.contacto || '—'}</TableCell>
                     <TableCell className="text-sm">{l.telefono || '—'}</TableCell>
                     <TableCell className="text-sm">{l.tiempo_promedio_entrega} días</TableCell>
                     <TableCell><Badge variant={l.estado_activo ? 'default' : 'secondary'}>{l.estado_activo ? 'Activo' : 'Inactivo'}</Badge></TableCell>
+                    <TableCell>{acciones('laboratorios', l, l.estado_activo, () => setLabEdit(l))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -184,37 +240,37 @@ export default function SettingsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Sede Form */}
-      <Dialog open={showSedeForm} onOpenChange={setShowSedeForm}>
+      {/* Sede: crear / editar */}
+      <Dialog open={!!sedeEdit} onOpenChange={(o) => { if (!o) setSedeEdit(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nueva Sede</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmitForm(createSede.mutate, () => setShowSedeForm(false))} className="space-y-4">
-            <div className="space-y-2"><Label>Nombre *</Label><Input name="nombre" required placeholder="Sede Centro" /></div>
-            <div className="space-y-2"><Label>Dirección</Label><Input name="direccion" placeholder="Cra 7 #45-67" /></div>
-            <div className="space-y-2"><Label>Teléfono</Label><Input name="telefono" placeholder="601-1234567" /></div>
+          <DialogHeader><DialogTitle>{sedeEdit?.id ? 'Editar sede' : 'Nueva sede'}</DialogTitle></DialogHeader>
+          <form key={sedeEdit?.id ?? 'nueva'} onSubmit={enviarSede} className="space-y-4">
+            <div className="space-y-2"><Label>Nombre *</Label><Input name="nombre" required defaultValue={sedeEdit?.nombre ?? ''} placeholder="Sede Centro" /></div>
+            <div className="space-y-2"><Label>Dirección</Label><Input name="direccion" defaultValue={sedeEdit?.direccion ?? ''} placeholder="Cra 7 #45-67" /></div>
+            <div className="space-y-2"><Label>Teléfono</Label><Input name="telefono" defaultValue={sedeEdit?.telefono ?? ''} placeholder="601-1234567" /></div>
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setShowSedeForm(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createSede.isPending}>{createSede.isPending ? 'Guardando...' : 'Crear Sede'}</Button>
+              <Button type="button" variant="outline" onClick={() => setSedeEdit(null)}>Cancelar</Button>
+              <Button type="submit" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando...' : sedeEdit?.id ? 'Guardar cambios' : 'Crear sede'}</Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Lab Form */}
-      <Dialog open={showLabForm} onOpenChange={setShowLabForm}>
+      {/* Laboratorio: crear / editar */}
+      <Dialog open={!!labEdit} onOpenChange={(o) => { if (!o) setLabEdit(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nuevo Laboratorio</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmitForm(createLab.mutate, () => setShowLabForm(false))} className="space-y-4">
-            <div className="space-y-2"><Label>Nombre *</Label><Input name="nombre" required placeholder="Lab Óptico" /></div>
-            <div className="space-y-2"><Label>Contacto</Label><Input name="contacto" placeholder="Nombre del contacto" /></div>
+          <DialogHeader><DialogTitle>{labEdit?.id ? 'Editar laboratorio' : 'Nuevo laboratorio'}</DialogTitle></DialogHeader>
+          <form key={labEdit?.id ?? 'nuevo'} onSubmit={enviarLab} className="space-y-4">
+            <div className="space-y-2"><Label>Nombre *</Label><Input name="nombre" required defaultValue={labEdit?.nombre ?? ''} placeholder="Lab Óptico" /></div>
+            <div className="space-y-2"><Label>Contacto</Label><Input name="contacto" defaultValue={labEdit?.contacto ?? ''} placeholder="Nombre del contacto" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Teléfono</Label><Input name="telefono" placeholder="601-..." /></div>
-              <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" placeholder="lab@email.com" /></div>
+              <div className="space-y-2"><Label>Teléfono</Label><Input name="telefono" defaultValue={labEdit?.telefono ?? ''} placeholder="601-..." /></div>
+              <div className="space-y-2"><Label>Email</Label><Input name="email" type="email" defaultValue={labEdit?.email ?? ''} placeholder="lab@email.com" /></div>
             </div>
-            <div className="space-y-2"><Label>Tiempo Promedio Entrega (días)</Label><Input name="tiempo_promedio_entrega" type="number" defaultValue="3" /></div>
+            <div className="space-y-2"><Label>Tiempo promedio de entrega (días)</Label><Input name="tiempo_promedio_entrega" type="number" min={0} defaultValue={labEdit?.tiempo_promedio_entrega ?? 3} /></div>
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setShowLabForm(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createLab.isPending}>{createLab.isPending ? 'Guardando...' : 'Crear Laboratorio'}</Button>
+              <Button type="button" variant="outline" onClick={() => setLabEdit(null)}>Cancelar</Button>
+              <Button type="submit" disabled={guardar.isPending}>{guardar.isPending ? 'Guardando...' : labEdit?.id ? 'Guardar cambios' : 'Crear laboratorio'}</Button>
             </div>
           </form>
         </DialogContent>

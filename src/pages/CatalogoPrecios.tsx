@@ -17,8 +17,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { usePermissions } from '@/hooks/usePermissions';
+import { AjustePreciosDialog } from '@/components/catalogo/AjustePreciosDialog';
 import {
-  CATEGORIAS, ajustarPrecio, claveCategoria, etiquetaCategoria, formatoCOP, leerPrecio, ordenarCategorias,
+  CATEGORIAS, claveCategoria, etiquetaCategoria, formatoCOP, leerPrecio, ordenarCategorias,
   type ProductoCatalogo,
 } from '@/lib/catalogo';
 
@@ -39,7 +40,7 @@ export default function CatalogoPrecios() {
   const [editando, setEditando] = useState<Borrador | null>(null);
   const [categoriaNueva, setCategoriaNueva] = useState('');
   const [precioTexto, setPrecioTexto] = useState('');
-  const [ajuste, setAjuste] = useState<{ categoria: string; porcentaje: string } | null>(null);
+  const [ajusteCategoria, setAjusteCategoria] = useState<string | null>(null);
   const [precioEnLinea, setPrecioEnLinea] = useState<{ id: string; texto: string } | null>(null);
 
   const { data: productos = [], isLoading } = useQuery({
@@ -122,20 +123,18 @@ export default function CatalogoPrecios() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const ajustarCategoria = useMutation({
-    mutationFn: async ({ categoria, porcentaje }: { categoria: string; porcentaje: number }) => {
-      const items = productos.filter((p) => p.categoria === categoria);
-      for (const p of items) {
-        const { error } = await supabase.from('productos_catalogo')
-          .update({ precio_full: ajustarPrecio(Number(p.precio_full), porcentaje) }).eq('id', p.id);
+  const ajustarPrecios = useMutation({
+    mutationFn: async (cambios: Array<{ id: string; precio: number }>) => {
+      for (const c of cambios) {
+        const { error } = await supabase.from('productos_catalogo').update({ precio_full: c.precio }).eq('id', c.id);
         if (error) throw error;
       }
-      return items.length;
+      return cambios.length;
     },
     onSuccess: (n) => {
       refrescar();
-      setAjuste(null);
-      toast.success(`Precios actualizados (${n} productos)`);
+      setAjusteCategoria(null);
+      toast.success(`Precios actualizados (${n} producto${n !== 1 ? 's' : ''})`);
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -169,11 +168,6 @@ export default function CatalogoPrecios() {
       onSuccess: () => toast.success(`${p.nombre}: ${formatoCOP(precio)}`),
     });
   };
-
-  const porcentajeAjuste = Number((ajuste?.porcentaje ?? '').replace(',', '.'));
-  const previa = ajuste && Number.isFinite(porcentajeAjuste) && porcentajeAjuste !== 0
-    ? productos.filter((p) => p.categoria === ajuste.categoria).map((p) => ({ p, nuevo: ajustarPrecio(Number(p.precio_full), porcentajeAjuste) }))
-    : [];
 
   return (
     <AppLayout>
@@ -210,7 +204,7 @@ export default function CatalogoPrecios() {
                 </CardTitle>
                 {puedeEditar && (
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setAjuste({ categoria: cat, porcentaje: '' })}>
+                    <Button variant="ghost" size="sm" onClick={() => setAjusteCategoria(cat)}>
                       <Percent className="h-4 w-4 mr-1" />Ajustar precios
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => abrir({ nombre: '', categoria: cat, precio_full: 0, aplica_descuento: true, activo: true })}>
@@ -336,43 +330,13 @@ export default function CatalogoPrecios() {
       </Dialog>
 
       {/* Ajuste masivo de precios */}
-      <Dialog open={!!ajuste} onOpenChange={(o) => { if (!o) setAjuste(null); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Ajustar precios · {ajuste && etiquetaCategoria(ajuste.categoria)}</DialogTitle></DialogHeader>
-          {ajuste && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <Label>Porcentaje</Label>
-                <div className="flex items-center gap-2">
-                  <Input autoFocus inputMode="decimal" className="w-28" value={ajuste.porcentaje} placeholder="5"
-                    onChange={(e) => setAjuste({ ...ajuste, porcentaje: e.target.value })} />
-                  <span className="text-sm text-muted-foreground">% (negativo para bajar). Se redondea a $1.000.</span>
-                </div>
-              </div>
-              {previa.length > 0 && (
-                <div className="max-h-60 overflow-y-auto rounded-md border divide-y text-sm">
-                  {previa.map(({ p, nuevo }) => (
-                    <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-1.5">
-                      <span className="truncate">{p.nombre}</span>
-                      <span className="tabular-nums shrink-0 text-xs">
-                        <span className="text-muted-foreground line-through mr-1.5">{formatoCOP(Number(p.precio_full))}</span>
-                        <span className="font-medium">{formatoCOP(nuevo)}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setAjuste(null)}>Cancelar</Button>
-                <Button disabled={previa.length === 0 || ajustarCategoria.isPending}
-                  onClick={() => ajustarCategoria.mutate({ categoria: ajuste.categoria, porcentaje: porcentajeAjuste })}>
-                  {ajustarCategoria.isPending ? 'Aplicando…' : `Aplicar a ${previa.length} productos`}
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AjustePreciosDialog
+        categoria={ajusteCategoria}
+        productos={productos.filter((p) => p.categoria === ajusteCategoria)}
+        aplicando={ajustarPrecios.isPending}
+        onCerrar={() => setAjusteCategoria(null)}
+        onAplicar={(cambios) => ajustarPrecios.mutate(cambios)}
+      />
     </AppLayout>
   );
 }

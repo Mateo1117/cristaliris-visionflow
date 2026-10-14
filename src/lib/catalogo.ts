@@ -60,3 +60,11 @@ export function leerPrecio(texto: string): number | null {
   const n = Number(limpio);
   return Number.isFinite(n) ? n : null;
 }
+
+export type ModoAjuste = 'porcentaje' | 'valor';
+
+/** Precio nuevo según el modo: porcentaje (redondeado a $1.000) o suma/resta de pesos. */
+export function precioAjustado(precio: number, modo: ModoAjuste, valor: number): number {
+  if (!Number.isFinite(valor) || valor === 0) return precio;
+  return modo === 'porcentaje' ? ajustarPrecio(precio, valor) : Math.max(0, Math.round(precio + valor));
+}

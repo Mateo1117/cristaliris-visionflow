@@ -3,7 +3,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { ESTADOS_PRODUCTO } from '@/types';
+import { todasLasEtapas } from '@/lib/etapasKanban';
 import { subMonths, subWeeks, format, startOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -88,7 +88,7 @@ export function DashboardCharts() {
       if (!data) return [];
       const counts: Record<string, number> = {};
       data.forEach((p) => { counts[p.estado_actual] = (counts[p.estado_actual] || 0) + 1; });
-      return ESTADOS_PRODUCTO.map((e) => ({ estado: e.key, label: e.label, cantidad: counts[e.key] || 0 })).filter((e) => e.cantidad > 0);
+      return todasLasEtapas().map((e) => ({ estado: e.clave, label: e.nombre, cantidad: counts[e.clave] || 0 })).filter((e) => e.cantidad > 0);
     },
   });
 

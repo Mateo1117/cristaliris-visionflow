@@ -3,7 +3,7 @@
  * tarjetas no se veía qué tiene cada laboratorio ni qué montura acompaña a
  * cada lente (son líneas distintas de la misma orden).
  */
-import { ESTADOS_LABORATORIO } from './businessDays';
+import { esEstadoLaboratorio } from './businessDays';
 
 export const SIN_LABORATORIO = 'sin-lab';
 export type TipoFiltro = 'todos' | 'lente' | 'montura';
@@ -77,7 +77,7 @@ export function resumenLaboratorios(items: ItemKanban[]): ResumenLaboratorio[] {
     const id = it.laboratorio_id ?? SIN_LABORATORIO;
     const r = m.get(id) ?? { id, nombre: it.laboratorio_id ? it.laboratorio_nombre : 'Sin laboratorio', activos: 0, enLaboratorio: 0, atrasados: 0 };
     r.activos++;
-    if ((ESTADOS_LABORATORIO as string[]).includes(it.estado_actual)) r.enLaboratorio++;
+    if (esEstadoLaboratorio(it.estado_actual)) r.enLaboratorio++;
     if (it.tiempo_esperado_dias > 0 && it.dias_en_estado >= it.tiempo_esperado_dias) r.atrasados++;
     m.set(id, r);
   }

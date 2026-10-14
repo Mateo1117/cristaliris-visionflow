@@ -1,6 +1,7 @@
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card } from '@/components/ui/card';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,8 @@ export default function Warranties() {
   const [showForm, setShowForm] = useState(false);
   const [selectedProducto, setSelectedProducto] = useState('');
   const [selectedLab, setSelectedLab] = useState('');
+  /** Defecto físico se reporta de inmediato; adaptación exige el periodo de 7 días. */
+  const [tipoGarantia, setTipoGarantia] = useState<'defecto' | 'adaptacion'>('defecto');
   const queryClient = useQueryClient();
 
   const { data: garantias = [], isLoading } = useQuery({
@@ -132,7 +135,8 @@ export default function Warranties() {
         subcodigo,
         envio_asumido_por: formData.envio_asumido_por || null,
         guia_envio: formData.guia_envio || null,
-      });
+        tipo: formData.tipo,
+      } as any);
       if (error) throw error;
 
       // La garantía recorre de nuevo el flujo de estados, marcada como garantía.
@@ -177,6 +181,7 @@ export default function Warranties() {
       setShowForm(false);
       setSelectedProducto('');
       setSelectedLab('');
+      setTipoGarantia('defecto');
       toast.success(`Garantía ${res.subcodigo} creada exitosamente`);
     },
     onError: (e: any) => toast.error(e.message || 'No se pudo crear la garantía'),
@@ -185,18 +190,23 @@ export default function Warranties() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedProducto) { toast.error('Seleccione un producto'); return; }
-    if (!fechaEntregaSeleccionada) {
-      toast.error('El producto no tiene fecha de entrega registrada: no se puede validar el periodo de adaptación');
-      return;
-    }
-    if (!adaptacionOk) {
-      toast.error(`Protocolo de adaptación: faltan ${diasRestantes} día(s) para poder solicitar la garantía`);
-      return;
+    // El periodo de adaptación solo aplica a garantías por adaptación; un
+    // defecto físico (lente rayado, montura torcida…) se reporta de inmediato.
+    if (tipoGarantia === 'adaptacion') {
+      if (!fechaEntregaSeleccionada) {
+        toast.error('El producto no tiene fecha de entrega registrada: no se puede validar el periodo de adaptación');
+        return;
+      }
+      if (!adaptacionOk) {
+        toast.error(`Protocolo de adaptación: faltan ${diasRestantes} día(s) para poder solicitar la garantía`);
+        return;
+      }
     }
     const fd = new FormData(e.currentTarget);
     const data: Record<string, any> = { orden_producto_id: selectedProducto };
     fd.forEach((v, k) => { data[k] = v; });
     data.laboratorio_id = selectedLab || null;
+    data.tipo = tipoGarantia;
     createGarantia.mutate(data);
   };
 
@@ -224,6 +234,7 @@ export default function Warranties() {
   const diasRestantes = diasRestantesAdaptacion(fechaEntregaSeleccionada);
   const adaptacionOk = adaptacionCumplida(fechaEntregaSeleccionada);
   const puedeSolicitar = !!selectedProd && !!fechaEntregaSeleccionada && adaptacionOk;
+  const esAdaptacion = tipoGarantia === 'adaptacion';
 
   return (
     <AppLayout>
@@ -330,13 +341,28 @@ export default function Warranties() {
                 </div>
               )}
 
+              {/* Tipo: el periodo de adaptación solo aplica a "Adaptación" */}
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs">Tipo de garantía *</Label>
+                <RadioGroup value={tipoGarantia} onValueChange={(v) => setTipoGarantia(v as 'defecto' | 'adaptacion')} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className={`flex items-start gap-2 rounded-md border p-2 text-xs cursor-pointer ${tipoGarantia === 'defecto' ? 'border-primary bg-primary/5' : ''}`}>
+                    <RadioGroupItem value="defecto" className="mt-0.5" />
+                    <span><span className="font-medium block text-sm">Defecto físico</span>Lente rayado, montura torcida, error de fabricación. Sin espera.</span>
+                  </label>
+                  <label className={`flex items-start gap-2 rounded-md border p-2 text-xs cursor-pointer ${tipoGarantia === 'adaptacion' ? 'border-primary bg-primary/5' : ''}`}>
+                    <RadioGroupItem value="adaptacion" className="mt-0.5" />
+                    <span><span className="font-medium block text-sm">Adaptación</span>No se adapta a la fórmula o al lente. Requiere {DIAS_ADAPTACION} días desde la entrega.</span>
+                  </label>
+                </RadioGroup>
+              </div>
+
               {/* Protocolo de adaptación: 7 días calendario desde la entrega */}
-              {selectedProd && !fechaEntregaSeleccionada && (
+              {esAdaptacion && selectedProd && !fechaEntregaSeleccionada && (
                 <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                   Sin fecha de entrega registrada. No se puede validar el periodo de adaptación de {DIAS_ADAPTACION} días.
                 </div>
               )}
-              {selectedProd && fechaEntregaSeleccionada && !adaptacionOk && (
+              {esAdaptacion && selectedProd && fechaEntregaSeleccionada && !adaptacionOk && (
                 <div className="rounded-md border border-warning/30 bg-warning/10 p-2 text-xs flex items-center gap-2">
                   <Clock className="h-4 w-4 text-warning shrink-0" />
                   <span>
@@ -345,7 +371,7 @@ export default function Warranties() {
                   </span>
                 </div>
               )}
-              {selectedProd && puedeSolicitar && (
+              {esAdaptacion && selectedProd && puedeSolicitar && (
                 <div className="rounded-md border border-success/30 bg-success/10 p-2 text-xs">
                   Periodo de adaptación cumplido — puede solicitar la garantía.
                 </div>
@@ -392,7 +418,7 @@ export default function Warranties() {
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createGarantia.isPending || !puedeSolicitar}>
+              <Button type="submit" disabled={createGarantia.isPending || !selectedProd || (esAdaptacion && !puedeSolicitar)}>
                 {createGarantia.isPending ? 'Creando...' : 'Solicitar Garantía'}
               </Button>
             </div>

@@ -1,3 +1,4 @@
+import { buscarEtapa, claseColorEtapa } from '@/lib/etapasRegistro';
 // Sistema Cristaliris — Core Types
 
 export interface Sede {
@@ -124,15 +125,13 @@ export const ESTADOS_PRODUCTO: { key: EstadoProducto; label: string; color: stri
 
 /** Etiqueta en español del estado (o el propio código legible si no existe). */
 export function etiquetaEstadoProducto(estado: string): string {
-  return ESTADOS_PRODUCTO.find((e) => e.key === estado)?.label ?? estado.replace(/_/g, ' ');
+  return buscarEtapa(estado)?.nombre ?? ESTADOS_PRODUCTO.find((e) => e.key === estado)?.label ?? estado.replace(/_/g, ' ');
 }
 
 /** Clases de color de la insignia del estado. */
 export function colorEstadoProducto(estado: string): string {
-  return (
-    ESTADOS_PRODUCTO.find((e) => e.key === estado)?.color ??
-    'bg-muted text-muted-foreground border-muted-foreground/30'
-  );
+  return buscarEtapa(estado) ? claseColorEtapa(estado)
+    : ESTADOS_PRODUCTO.find((e) => e.key === estado)?.color ?? 'bg-muted text-muted-foreground border-muted-foreground/30';
 }
 
 export interface OrdenProducto {

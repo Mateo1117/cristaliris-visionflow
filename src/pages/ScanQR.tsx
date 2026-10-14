@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { ESTADOS_PRODUCTO, type EstadoProducto } from '@/types';
+import { etiquetaEstadoProducto, type EstadoProducto } from '@/types';
+import { etapasVisibles, moverEtapa } from '@/lib/etapasKanban';
 import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { usePermissions } from '@/hooks/usePermissions';
-import { esEstadoLaboratorio, esRetroceso, sellosDeFecha, siguienteEstado } from '@/lib/businessDays';
+import { esRetroceso, siguienteEstado } from '@/lib/businessDays';
 import { QrCode, ChevronRight, RotateCcw, CheckCircle2, Loader2, Search, Minus, Plus, Package, ShoppingCart, AlertTriangle } from 'lucide-react';
 
 type ScanMode = 'idle' | 'order' | 'inventory';
@@ -279,7 +280,7 @@ export default function ScanQR() {
 
   // ── Cambio de estado por QR ────────────────────────────────────────────────
   const nextState = product ? siguienteEstado(product.estado_actual) : null;
-  const targetLabel = ESTADOS_PRODUCTO.find(e => e.key === targetState)?.label || '';
+  const targetLabel = targetState ? etiquetaEstadoProducto(targetState) : '';
   /** El estado elegido no es el paso lógico siguiente (README 3.2). */
   const fueraDeSecuencia = !!product && !!targetState && targetState !== nextState?.key;
   const esRetrocesoQR = !!product && !!targetState && esRetroceso(product.estado_actual, targetState);
@@ -303,36 +304,12 @@ export default function ScanQR() {
 
     setUpdating(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const ahora = new Date();
-
-      // Reproceso interno: se devuelve desde control de calidad al laboratorio.
-      const esReproceso = esRetrocesoQR
-        && product.estado_actual === 'control_calidad'
-        && esEstadoLaboratorio(targetState);
-
-      const cambios: Record<string, any> = {
-        estado_actual: targetState,
-        // Sella la fecha del ciclo correspondiente al estado alcanzado.
-        ...sellosDeFecha(targetState, ahora),
-      };
-      if (esReproceso) {
-        cambios.es_reproceso = true;
-        cambios.fecha_envio_lab = ahora.toISOString();
-      }
-
-      const { error: e1 } = await supabase.from('orden_productos').update(cambios as any).eq('id', product.id);
-      if (e1) throw e1;
-
-      const { error: e2 } = await supabase.from('estados_producto').insert({
-        orden_producto_id: product.id,
-        estado_anterior: product.estado_actual as any,
-        estado_nuevo: targetState as any,
-        metodo: esRetrocesoQR ? 'admin_retroceso' : 'qr_scan',
+      const { reproceso: esReproceso } = await moverEtapa({
+        id: product.id,
+        estado: targetState,
+        metodo: 'qr_scan',
         justificacion: necesitaJustificacion ? justificacion.trim() : null,
-        usuario_id: user?.id || null,
       });
-      if (e2) throw e2;
 
       setProduct(prev => prev ? { ...prev, estado_actual: targetState } : null);
       setJustificacion('');
@@ -349,7 +326,7 @@ export default function ScanQR() {
     }
   };
 
-  const currentLabel = product ? ESTADOS_PRODUCTO.find(e => e.key === product.estado_actual)?.label : '';
+  const currentLabel = product ? etiquetaEstadoProducto(product.estado_actual) : '';
   const showInitial = !scanning && mode === 'idle';
 
   return (
@@ -404,7 +381,7 @@ export default function ScanQR() {
                     <Select value={targetState} onValueChange={(v) => setTargetState(v as EstadoProducto)}>
                       <SelectTrigger><SelectValue placeholder="Seleccione el estado" /></SelectTrigger>
                       <SelectContent>
-                        {ESTADOS_PRODUCTO.filter(e => e.key !== product.estado_actual).map(e => (
+                        {etapasVisibles().map(e => ({ key: e.clave, label: e.nombre })).filter(e => e.key !== product.estado_actual).map(e => (
                           <SelectItem key={e.key} value={e.key}>
                             {e.label}{e.key === nextState?.key ? ' — siguiente paso' : ''}
                           </SelectItem>

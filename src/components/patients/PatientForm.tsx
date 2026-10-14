@@ -3,13 +3,18 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm, type FieldErrors } from 'react-hook-form';
 import { toast } from 'sonner';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { pacienteSchema, valoresIniciales, type PacienteFormValues } from './patientSchema';
+import { EmpresaDialog } from './EmpresaDialog';
+import { Plus } from 'lucide-react';
+
+const NUEVA_EMPRESA = '__nueva__';
+const EMPRESA_NUEVA = {}; // referencia estable: el diálogo se reinicia al cambiar de objeto
 
 interface PatientFormProps {
   open: boolean;
@@ -22,6 +27,7 @@ interface PatientFormProps {
 
 export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialData }: PatientFormProps) {
   const isEditing = !!initialData;
+  const [creandoEmpresa, setCreandoEmpresa] = useState(false);
 
   const form = useForm<PacienteFormValues>({
     resolver: zodResolver(pacienteSchema),
@@ -87,6 +93,7 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -211,7 +218,7 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
                   <FormLabel>Empresa de la que viene *</FormLabel>
                   <Select
                     value={field.value}
-                    onValueChange={field.onChange}
+                    onValueChange={(v) => (v === NUEVA_EMPRESA ? setCreandoEmpresa(true) : field.onChange(v))}
                   >
                     <FormControl>
                       <SelectTrigger><SelectValue placeholder="Sin empresa" /></SelectTrigger>
@@ -221,6 +228,9 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
                       {empresas.map((e) => (
                         <SelectItem key={e.id} value={e.id}>{e.razon_social}</SelectItem>
                       ))}
+                      <SelectItem value={NUEVA_EMPRESA} className="text-primary font-medium">
+                        <span className="flex items-center gap-1.5"><Plus className="h-3.5 w-3.5" />Nueva empresa…</span>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -260,5 +270,11 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
         </Form>
       </DialogContent>
     </Dialog>
+    <EmpresaDialog
+      empresa={creandoEmpresa ? EMPRESA_NUEVA : null}
+      onOpenChange={(o) => !o && setCreandoEmpresa(false)}
+      onGuardada={(e) => form.setValue('empresa_id', e.id, { shouldDirty: true, shouldValidate: true })}
+    />
+    </>
   );
 }

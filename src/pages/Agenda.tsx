@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
 import { ESTADO_CITA_COLOR, ESTADO_CITA_LABEL, ESTADOS_CITA_MANUALES } from '@/lib/flujoAtencion';
 import { NuevaCitaDialog, type PrefijoCita } from '@/components/schedule/NuevaCitaDialog';
+import { CitaPanel } from '@/components/schedule/CitaPanel';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -65,8 +66,10 @@ export default function Agenda() {
   const { role, canWrite, canView } = usePermissions();
   const esOptometra = role === 'optometra';
   // La optómetra entra viendo solo sus pacientes; puede quitar el filtro.
-  const [soloMias, setSoloMias] = useState(false);
-  useEffect(() => { if (esOptometra) setSoloMias(true); }, [esOptometra]);
+  // La optómetra ve únicamente su agenda; el admin puede filtrar la suya.
+  const [soloMiasElegido, setSoloMias] = useState(false);
+  const soloMias = esOptometra || soloMiasElegido;
+  const [citaSel, setCitaSel] = useState<string | null>(null);
   const puedeAgendar = canWrite('agenda');
   const [medicoVista, setMedicoVista] = useState<string>(TODOS);
   useEffect(() => { if (esOptometra && user?.id) setMedicoVista(user.id); }, [esOptometra, user?.id]);
@@ -215,7 +218,7 @@ export default function Agenda() {
         <Input type="date" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} className="w-[180px]" />
         <Button variant="outline" size="icon" onClick={() => changeDate(1)} aria-label={siguiente}><ChevronRight className="h-4 w-4" /></Button>
         <Button variant="ghost" size="sm" onClick={() => setFecha(today)}>Hoy</Button>
-        {vista !== 'dia' && (
+        {vista !== 'dia' && !esOptometra && (
           <Select value={medicoVista} onValueChange={setMedicoVista}>
             <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -269,7 +272,7 @@ export default function Agenda() {
             <span className="text-muted-foreground">{r.label}</span>
           </div>
         ))}
-        {(esOptometra || role === 'admin') && (
+        {role === 'admin' && (
           <div className="flex items-center gap-2 ml-auto">
             <Switch id="solo-mias" checked={soloMias} onCheckedChange={setSoloMias} />
             <Label htmlFor="solo-mias" className="text-sm cursor-pointer">Solo mis citas</Label>
@@ -306,7 +309,12 @@ export default function Agenda() {
                       {col.filas.map((fila) => fila.tipo === 'cita' ? (
                         <div key={fila.cita.id} className="flex items-center px-4 py-2 min-h-[3rem] gap-2">
                           <span className="text-xs text-muted-foreground w-12 flex-shrink-0 tabular-nums">{fila.hora}</span>
-                          <div className={`flex-1 rounded-md border px-3 py-1.5 ${estadoColor[fila.cita.estado] || ''}`}>
+                          <div
+                            role="button" tabIndex={0}
+                            onClick={() => setCitaSel(fila.cita.id)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') setCitaSel(fila.cita.id); }}
+                            className={`flex-1 rounded-md border px-3 py-1.5 cursor-pointer hover:shadow-sm hover:ring-1 hover:ring-primary/30 transition ${estadoColor[fila.cita.estado] || ''}`}
+                          >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-sm font-medium">{fila.cita.pacientes?.nombres} {fila.cita.pacientes?.apellidos}</span>
                               <Badge variant="outline" className="text-[10px] h-5 no-underline">{estadoLabel[fila.cita.estado] || fila.cita.estado}</Badge>
@@ -321,12 +329,12 @@ export default function Agenda() {
                             )}
                             <div className="flex flex-wrap gap-1.5 mt-1.5">
                               {puedeAgendar && ['agendada', 'confirmada'].includes(fila.cita.estado) && fecha === today && (
-                                <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => cambiarEstado.mutate({ id: fila.cita.id, estado: 'en_espera' })}>
+                                <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); cambiarEstado.mutate({ id: fila.cita.id, estado: 'en_espera' }); }}>
                                   <LogIn className="h-3.5 w-3.5 mr-1" />Llegó
                                 </Button>
                               )}
                               {puedeAtender && ['en_espera', 'en_consulta'].includes(fila.cita.estado) && (
-                                <Button size="sm" className="h-7 text-xs" onClick={() => atender(fila.cita)}>
+                                <Button size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); atender(fila.cita); }}>
                                   <Stethoscope className="h-3.5 w-3.5 mr-1" />{fila.cita.estado === 'en_consulta' ? 'Continuar consulta' : 'Atender'}
                                 </Button>
                               )}
@@ -376,6 +384,22 @@ export default function Agenda() {
             </div>
           )}
       </>}
+
+      {(() => {
+        const sel = (citas as any[]).find((c) => c.id === citaSel) ?? null;
+        return (
+          <CitaPanel
+            cita={sel}
+            medicoNombre={sel ? optometras.find((o) => o.user_id === sel.optometra_id)?.nombre : undefined}
+            hoy={today}
+            puedeAgendar={puedeAgendar}
+            puedeAtender={puedeAtender}
+            onOpenChange={(o) => { if (!o) setCitaSel(null); }}
+            onCambiarEstado={(estado) => sel && cambiarEstado.mutate({ id: sel.id, estado })}
+            onAtender={() => { if (sel) { setCitaSel(null); atender(sel); } }}
+          />
+        );
+      })()}
 
       <NuevaCitaDialog
         open={!!prefijo}

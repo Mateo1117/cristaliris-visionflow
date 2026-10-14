@@ -26,6 +26,7 @@ export type Modulo =
   | 'inventario'
   | 'cartera'
   | 'facturacion'
+  | 'horarios'
   | 'garantias'
   | 'reportes'
   | 'scan'
@@ -41,6 +42,7 @@ export const ACCESO_MODULO: Partial<Record<Modulo, AppRole[]>> = {
   historias: ['admin', 'optometra', 'asesor_comercial'],
   cartera: ['admin', 'contador', 'asesor_comercial'],
   facturacion: ['admin', 'asesor_comercial', 'auxiliar_optica'],
+  horarios: ['admin', 'optometra', 'asesor_comercial', 'auxiliar_optica'],
   reportes: ['admin', 'contador'],
   usuarios: ['admin'],
   configuracion: ['admin'],
@@ -62,6 +64,7 @@ export const ESCRITURA_MODULO: Record<Modulo, AppRole[]> = {
   inventario: ['admin', 'auxiliar_optica'],
   cartera: ['admin', 'contador', 'asesor_comercial'],
   facturacion: ['admin', 'asesor_comercial', 'auxiliar_optica'],
+  horarios: ['admin'],
   garantias: ['admin', 'optometra', 'asesor_comercial', 'auxiliar_optica'],
   reportes: [],
   scan: ['admin', 'mensajero', 'auxiliar_optica', 'asesor_comercial'],

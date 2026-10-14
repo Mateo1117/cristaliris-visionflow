@@ -21,6 +21,7 @@ const ClinicalRecords = lazy(() => import("./pages/ClinicalRecords"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const Billing = lazy(() => import("./pages/Billing"));
 const Facturacion = lazy(() => import("./pages/Facturacion"));
+const HorariosMedicos = lazy(() => import("./pages/HorariosMedicos"));
 const Warranties = lazy(() => import("./pages/Warranties"));
 const Reports = lazy(() => import("./pages/Reports"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
@@ -46,6 +47,7 @@ function CargandoPantalla() {
 const ROLES_HISTORIAS: AppRole[] = ['admin', 'optometra', 'asesor_comercial'];
 const ROLES_CARTERA: AppRole[] = ['admin', 'contador', 'asesor_comercial'];
 const ROLES_FACTURACION: AppRole[] = ['admin', 'asesor_comercial', 'auxiliar_optica'];
+const ROLES_HORARIOS: AppRole[] = ['admin', 'optometra', 'asesor_comercial', 'auxiliar_optica'];
 const ROLES_REPORTES: AppRole[] = ['admin', 'contador'];
 const ROLES_ADMIN: AppRole[] = ['admin'];
 
@@ -67,6 +69,7 @@ const App = () => (
           <Route path="/historias" element={<ProtectedRoute roles={ROLES_HISTORIAS}><ClinicalRecords /></ProtectedRoute>} />
           <Route path="/historia-clinica" element={<Navigate to="/historias" replace />} />
           <Route path="/inventario" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+          <Route path="/horarios" element={<ProtectedRoute roles={ROLES_HORARIOS}><HorariosMedicos /></ProtectedRoute>} />
           <Route path="/facturacion" element={<ProtectedRoute roles={ROLES_FACTURACION}><Facturacion /></ProtectedRoute>} />
           <Route path="/cartera" element={<ProtectedRoute roles={ROLES_CARTERA}><Billing /></ProtectedRoute>} />
           <Route path="/cotizaciones" element={<ProtectedRoute><Cotizaciones /></ProtectedRoute>} />

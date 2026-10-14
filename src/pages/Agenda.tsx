@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -16,7 +15,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
 import { ESTADO_CITA_COLOR, ESTADO_CITA_LABEL, ESTADOS_CITA_MANUALES } from '@/lib/flujoAtencion';
-import { DoctorScheduleManager } from '@/components/schedule/DoctorScheduleManager';
 import { NuevaCitaDialog, type PrefijoCita } from '@/components/schedule/NuevaCitaDialog';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +22,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 import { aHoraCorta, hoyEnColombia, sumarDias } from '@/lib/agendaGrid';
-import { DIAS_SEMANA, calcularTurnos, diaDeSemana, type BloqueHorario } from '@/lib/disponibilidad';
+import { DIAS_SEMANA, calcularTurnos, diaCompletoBloqueado, diaDeSemana } from '@/lib/disponibilidad';
+import { useExcepciones, useHorariosMedicos, useOptometras, useSedesActivas } from '@/lib/useAgendaDatos';
 
 const estadoColor = ESTADO_CITA_COLOR;
 const estadoLabel = ESTADO_CITA_LABEL;
@@ -42,7 +41,6 @@ export default function Agenda() {
   const [fecha, setFecha] = useState(today);
   const [sedeId, setSedeId] = useState<string>(TODAS);
   const [prefijo, setPrefijo] = useState<PrefijoCita | null>(null);
-  const [showScheduleFor, setShowScheduleFor] = useState<{ userId: string; nombre: string } | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -67,35 +65,10 @@ export default function Agenda() {
     },
   });
 
-  const { data: optometras = [] } = useQuery({
-    queryKey: ['optometras'],
-    queryFn: async () => {
-      const { data: allRoles } = await supabase.from('user_roles').select('user_id').eq('role', 'optometra');
-      if (!allRoles?.length) return [];
-      const ids = allRoles.map(r => r.user_id);
-      const { data, error } = await supabase.from('profiles').select('user_id, nombre, email').in('user_id', ids).eq('estado_activo', true).order('nombre');
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const { data: horarios = [] } = useQuery({
-    queryKey: ['horarios-medicos'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('horarios_medicos').select('*').order('hora_inicio');
-      if (error) throw error;
-      return data as BloqueHorario[];
-    },
-  });
-
-  const { data: sedes = [] } = useQuery({
-    queryKey: ['sedes-agenda'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('sedes').select('id, nombre').eq('estado_activa', true).order('nombre');
-      if (error) throw error;
-      return data || [];
-    },
-  });
+  const { data: optometras = [] } = useOptometras();
+  const { data: horarios = [] } = useHorariosMedicos();
+  const { data: excepciones = [] } = useExcepciones();
+  const { data: sedes = [] } = useSedesActivas();
 
   const cambiarEstado = useMutation({
     mutationFn: async ({ id, estado }: { id: string; estado: string; silencioso?: boolean }) => {
@@ -156,16 +129,17 @@ export default function Agenda() {
     return [...ids].map((id) => {
       const propias = citasSede.filter((c: any) => (c.optometra_id ?? SIN_ASIGNAR) === id);
       const libres = id === SIN_ASIGNAR || esPasado ? [] : calcularTurnos({
-        fecha, horarios, citas: citas as any, medicoId: id, sedeId: sedeFiltro, desdeMinutos: desde,
+        fecha, horarios, citas: citas as any, medicoId: id, sedeId: sedeFiltro, desdeMinutos: desde, excepciones,
       });
+      const ausencia = id === SIN_ASIGNAR ? undefined : diaCompletoBloqueado(id, fecha, excepciones);
       const filas: Fila[] = [
         ...propias.map((c: any) => ({ tipo: 'cita' as const, hora: aHoraCorta(c.hora_inicio), cita: c })),
         ...libres.map((t) => ({ tipo: 'libre' as const, hora: t.hora_inicio, fin: t.hora_fin, sedeId: t.sede_id })),
       ].sort((a, b) => a.hora.localeCompare(b.hora));
       const activas = propias.filter((c: any) => !['cancelada', 'no_asistio'].includes(c.estado)).length;
-      return { id, nombre: id === SIN_ASIGNAR ? 'Sin asignar' : nombreMedico(id), filas, activas, libres: libres.length };
+      return { id, nombre: id === SIN_ASIGNAR ? 'Sin asignar' : nombreMedico(id), filas, activas, libres: libres.length, ausencia };
     }).sort((a, b) => (a.id === SIN_ASIGNAR ? 1 : b.id === SIN_ASIGNAR ? -1 : a.nombre.localeCompare(b.nombre)));
-  }, [citas, horarios, dia, sedeFiltro, fecha, today, esPasado, optometras, soloMias, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [citas, horarios, excepciones, dia, sedeFiltro, fecha, today, esPasado, optometras, soloMias, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resumen del flujo del día (todas las citas, sin importar el filtro).
   const resumen = useMemo(() => {
@@ -178,16 +152,14 @@ export default function Agenda() {
     ];
   }, [citas]);
 
-  const resumenHorario = (medicoId: string) => {
-    const propios = horarios.filter((h) => h.medico_id === medicoId && h.activo);
-    if (propios.length === 0) return 'Sin horario configurado';
-    const dias = [...new Set(propios.map((h) => h.dia_semana))].sort().map((d) => DIAS_SEMANA[d].slice(0, 3));
-    return `${propios.length} bloque${propios.length !== 1 ? 's' : ''} · ${dias.join(', ')}`;
-  };
+
 
   return (
     <AppLayout>
       <PageHeader title="Agenda" description="Gestión de citas, agenda y horarios de optómetras">
+        {canView('horarios') && (
+          <Button variant="outline" onClick={() => navigate('/horarios')}><CalendarIcon className="h-4 w-4 mr-1" />Horarios médicos</Button>
+        )}
         <Button onClick={() => setPrefijo({ fecha: esPasado ? today : fecha, sedeId: sedeFiltro })}><Plus className="h-4 w-4 mr-1" />Nueva Cita</Button>
       </PageHeader>
 
@@ -220,13 +192,7 @@ export default function Agenda() {
         )}
       </div>
 
-      <Tabs defaultValue="dia">
-        <TabsList className="mb-4">
-          <TabsTrigger value="dia">Día</TabsTrigger>
-          <TabsTrigger value="horarios">Horarios Médicos</TabsTrigger>
-        </TabsList>
 
-        <TabsContent value="dia">
           <p className="text-sm text-muted-foreground mb-3 capitalize">
             {new Date(fecha + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
@@ -234,7 +200,7 @@ export default function Agenda() {
             <Card>
               <CardContent className="py-10 text-center text-sm text-muted-foreground space-y-2">
                 <p>No hay médicos con horario los {DIAS_SEMANA[dia].toLowerCase()} ni citas este día.</p>
-                <p>Configure los horarios en la pestaña <span className="font-medium">Horarios Médicos</span> para ver aquí los turnos disponibles.</p>
+                <p>Configure los horarios en <Button variant="link" className="p-0 h-auto" onClick={() => navigate('/horarios')}>Horarios médicos</Button> para ver aquí los turnos disponibles.</p>
               </CardContent>
             </Card>
           ) : (
@@ -246,7 +212,9 @@ export default function Agenda() {
                       <CardTitle className="text-sm font-medium">{col.nombre}</CardTitle>
                       <div className="flex gap-1">
                         <Badge variant="secondary" className="text-[10px]">{col.activas} citas</Badge>
-                        {col.id !== SIN_ASIGNAR && <Badge variant="outline" className="text-[10px]">{col.libres} libres</Badge>}
+                        {col.ausencia
+                          ? <Badge variant="outline" className="text-[10px] border-warning/50 text-warning">{col.ausencia.motivo}</Badge>
+                          : col.id !== SIN_ASIGNAR && <Badge variant="outline" className="text-[10px]">{col.libres} libres</Badge>}
                       </div>
                     </div>
                   </CardHeader>
@@ -325,37 +293,6 @@ export default function Agenda() {
               ))}
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="horarios" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {optometras.length === 0 ? (
-              <p className="text-muted-foreground col-span-full text-center py-8">No hay optómetras registrados. Cree un usuario con rol "Optómetra" en el módulo de Usuarios.</p>
-            ) : (
-              optometras.map((doc: any) => (
-                <Card key={doc.user_id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-medium">{doc.nombre}</CardTitle>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowScheduleFor({ userId: doc.user_id, nombre: doc.nombre })}
-                      >
-                        <CalendarIcon className="h-3 w-3 mr-1" />Configurar
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-1">
-                    <p className="text-xs text-muted-foreground">{doc.email}</p>
-                    <p className="text-xs flex items-center gap-1"><MapPin className="h-3 w-3 text-muted-foreground" />{resumenHorario(doc.user_id)}</p>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
 
       <NuevaCitaDialog
         open={!!prefijo}
@@ -363,17 +300,10 @@ export default function Agenda() {
         prefijo={prefijo ?? { fecha }}
         medicos={optometras as any}
         horarios={horarios}
+        excepciones={excepciones}
         sedes={sedes as any}
       />
 
-      {showScheduleFor && (
-        <DoctorScheduleManager
-          medicoId={showScheduleFor.userId}
-          medicoNombre={showScheduleFor.nombre}
-          open={!!showScheduleFor}
-          onOpenChange={(o) => { if (!o) setShowScheduleFor(null); }}
-        />
-      )}
     </AppLayout>
   );
 }

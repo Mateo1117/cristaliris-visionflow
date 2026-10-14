@@ -25,6 +25,17 @@ export interface CitaOcupada {
   estado: string;
 }
 
+/** Ausencia o bloqueo (tabla horarios_excepciones). Sin horas = día completo. */
+export interface Excepcion {
+  id?: string;
+  medico_id: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  hora_inicio?: string | null;
+  hora_fin?: string | null;
+  motivo?: string | null;
+}
+
 export interface Turno {
   medico_id: string;
   sede_id: string | null;
@@ -97,10 +108,26 @@ interface OpcionesTurnos {
   medicoId?: string | null;
   /** Minutos desde la medianoche; los turnos que empiezan antes no se ofrecen (p. ej. la hora actual si la fecha es hoy). */
   desdeMinutos?: number;
+  /** Ausencias y bloqueos: los turnos que caen dentro no se ofrecen. */
+  excepciones?: Excepcion[];
 }
 
+/** Excepciones de un médico que aplican a una fecha. */
+export const excepcionesDelDia = (medicoId: string, fecha: string, excepciones: Excepcion[] = []) =>
+  excepciones.filter((e) => e.medico_id === medicoId && e.fecha_inicio <= fecha && fecha <= e.fecha_fin);
+
+/** ¿El rango cae en una ausencia o bloqueo del médico ese día? */
+export function estaBloqueado(medicoId: string, fecha: string, horaInicio: string, horaFin: string, excepciones: Excepcion[] = []): Excepcion | undefined {
+  return excepcionesDelDia(medicoId, fecha, excepciones).find((e) =>
+    !e.hora_inicio || !e.hora_fin || haySolape(e.hora_inicio, e.hora_fin, horaInicio, horaFin));
+}
+
+/** ¿El médico tiene bloqueado el día completo? */
+export const diaCompletoBloqueado = (medicoId: string, fecha: string, excepciones: Excepcion[] = []) =>
+  excepcionesDelDia(medicoId, fecha, excepciones).find((e) => !e.hora_inicio || !e.hora_fin);
+
 /** Turnos libres del día, ordenados por hora y luego por médico. */
-export function calcularTurnos({ fecha, horarios, citas, sedeId, medicoId, desdeMinutos = 0 }: OpcionesTurnos): Turno[] {
+export function calcularTurnos({ fecha, horarios, citas, sedeId, medicoId, desdeMinutos = 0, excepciones = [] }: OpcionesTurnos): Turno[] {
   const dia = diaDeSemana(fecha);
   const ocupadas = citas.filter((c) => c.optometra_id && !ESTADOS_QUE_LIBERAN.includes(c.estado));
   const vistos = new Set<string>();
@@ -118,6 +145,7 @@ export function calcularTurnos({ fecha, horarios, citas, sedeId, medicoId, desde
       const turno: Turno = { medico_id: b.medico_id, sede_id: b.sede_id, hora_inicio: aHora(t), hora_fin: aHora(t + duracion) };
       const clave = `${turno.medico_id}|${turno.hora_inicio}`;
       if (vistos.has(clave)) continue;
+      if (estaBloqueado(b.medico_id, fecha, turno.hora_inicio, turno.hora_fin, excepciones)) continue;
       const ocupado = ocupadas.some((c) =>
         c.optometra_id === b.medico_id && haySolape(c.hora_inicio, c.hora_fin, turno.hora_inicio, turno.hora_fin));
       if (ocupado) continue;
@@ -150,4 +178,20 @@ export function dentroDeHorario(medicoId: string, fecha: string, horaInicio: str
   return horarios.some((b) =>
     b.activo && b.medico_id === medicoId && b.dia_semana === dia &&
     aMinutos(b.hora_inicio) <= aMinutos(horaInicio) && aMinutos(horaFin) <= aMinutos(b.hora_fin));
+}
+
+/** Horas de atención y turnos posibles por semana de un conjunto de bloques activos. */
+export function resumenSemanal(bloques: Array<Pick<BloqueHorario, 'hora_inicio' | 'hora_fin' | 'duracion_cita' | 'activo' | 'dia_semana'>>) {
+  let minutos = 0;
+  let turnos = 0;
+  const dias = new Set<number>();
+  for (const b of bloques) {
+    if (!b.activo) continue;
+    const largo = aMinutos(b.hora_fin) - aMinutos(b.hora_inicio);
+    if (largo <= 0) continue;
+    minutos += largo;
+    turnos += b.duracion_cita > 0 ? Math.floor(largo / b.duracion_cita) : 0;
+    dias.add(b.dia_semana);
+  }
+  return { horas: Math.round((minutos / 60) * 10) / 10, turnos, dias: dias.size };
 }

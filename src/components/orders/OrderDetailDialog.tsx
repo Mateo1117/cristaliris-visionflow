@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import { ChevronRight, ChevronLeft, Printer, Upload, Trash2, Clock, AlertTriangle, Camera, Image, Calculator, Save, Loader2, Receipt, Tag, Usb, Pencil, X } from 'lucide-react';
 import { printThermalLabel, printThermalReceipt } from '@/lib/printing/thermal';
-import { printReceiptUSB, printLabelUSB, pickUsbPrinter, isUsbPrinterConnected } from '@/lib/printing/escpos';
+import { printReceiptUSB, printLabelUSB, pickUsbPrinter, isUsbPrinterConnected, SinImpresoraError } from '@/lib/printing/escpos';
 import { loadPrintSettings } from '@/lib/printing/printSettings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -354,9 +354,10 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         laboratorio: item.laboratorio_nombre,
         numeroMontura: item.numero_montura || undefined,
       });
-      toast.success('Etiqueta enviada por USB');
+      toast.success('Etiqueta enviada a la impresora');
     } catch (e: any) {
-      toast.error(e.message || 'Error USB. Usando PDF como respaldo.');
+      // Sin impresora vinculada: directo al diálogo del navegador, sin error.
+      if (!(e instanceof SinImpresoraError)) toast.error(`${e.message || 'La impresora no respondió'}. Se abre la impresión del navegador.`);
       printLabel();
     }
   };
@@ -371,15 +372,16 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         total: item.precio_venta || 0,
         notas: `Lab: ${item.laboratorio_nombre}${item.numero_montura ? ' M:' + item.numero_montura : ''}`,
       });
-      toast.success('Recibo enviado por USB');
+      toast.success('Recibo enviado a la impresora');
     } catch (e: any) {
-      toast.error(e.message || 'Error USB. Usando PDF como respaldo.');
+      // Sin impresora vinculada: directo al diálogo del navegador, sin error.
+      if (!(e instanceof SinImpresoraError)) toast.error(`${e.message || 'La impresora no respondió'}. Se abre la impresión del navegador.`);
       printReceipt();
     }
   };
 
   const pairUsb = async () => {
-    try { await pickUsbPrinter(); setUsbConectada(true); toast.success('Impresora conectada'); }
+    try { await pickUsbPrinter(); setUsbConectada(true); toast.success('Impresora conectada: desde ahora "Imprimir" va directo a ella'); }
     catch (e: any) { if (e.name !== 'NotFoundError') toast.error(e.message); }
   };
 
@@ -698,7 +700,9 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                 </span>
                 {!usbConectada && <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={pairUsb}>Conectar (solo la primera vez)</Button>}
               </p>
-              <p>Si no imprime, use <b>PDF</b> y en el diálogo elija ese tamaño de papel, escala 100 % y sin márgenes. Los tamaños se cambian en Configuración → Impresión.</p>
+              {usbConectada
+                ? <p>"Imprimir" envía directo a la impresora térmica. <b>PDF</b> abre la impresión del navegador.</p>
+                : <p>Mientras no esté conectada, "Imprimir" abre la impresión del navegador: en <b>Destino</b> elija la impresora (ej. Printer-80), escala 100 % y sin márgenes. Para conectarla, toque <b>Conectar</b>, elija <b>Printer-80</b> en la lista y pulse <b>Conectar</b>.</p>}
             </div>
           </TabsContent>
 

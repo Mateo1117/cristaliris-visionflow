@@ -42,7 +42,7 @@ export async function moverEtapa(p: {
   metodo?: 'manual' | 'qr_scan';
   justificacion?: string | null;
   observaciones?: string | null;
-}): Promise<{ reproceso: boolean; retroceso: boolean }> {
+}): Promise<ResultadoMovimiento> {
   const { data, error } = await (supabase.rpc as any)('mover_etapa', {
     p_orden_producto_id: p.id,
     p_estado: p.estado,
@@ -51,5 +51,16 @@ export async function moverEtapa(p: {
     p_observaciones: p.observaciones ?? null,
   });
   if (error) throw error;
-  return { reproceso: !!data?.reproceso, retroceso: !!data?.retroceso };
+  return { reproceso: !!data?.reproceso, retroceso: !!data?.retroceso, acompanan: Number(data?.acompanan) || 0 };
+}
+
+/** Resultado de mover_etapa; `acompanan` = monturas de la orden que se movieron con el lente. */
+export interface ResultadoMovimiento { reproceso: boolean; retroceso: boolean; acompanan: number }
+
+/** Texto del aviso tras mover una tarjeta. */
+export function mensajeMovimiento(r: ResultadoMovimiento, destino?: string): string {
+  let texto = destino ? `Estado actualizado a: ${destino}` : 'Estado actualizado';
+  if (r.reproceso) texto += ' — marcado como reproceso interno';
+  if (r.acompanan) texto += r.acompanan === 1 ? ' · la montura se movió con el lente' : ` · ${r.acompanan} monturas se movieron con el lente`;
+  return texto;
 }

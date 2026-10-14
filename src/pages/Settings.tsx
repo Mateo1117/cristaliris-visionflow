@@ -43,12 +43,15 @@ import {
   type LabelCalibration,
 } from '@/lib/printing/calibration';
 
-type Tabla = 'sedes' | 'laboratorios';
+import { EmpresaDialog, type Empresa } from '@/components/patients/EmpresaDialog';
+
+type Tabla = 'sedes' | 'laboratorios' | 'empresas';
 
 export default function SettingsPage() {
   /** Sede o laboratorio en edición: {} = nuevo, con id = editar, null = cerrado. */
   const [sedeEdit, setSedeEdit] = useState<Record<string, any> | null>(null);
   const [labEdit, setLabEdit] = useState<Record<string, any> | null>(null);
+  const [empresaEdit, setEmpresaEdit] = useState<Partial<Empresa> | null>(null);
   const queryClient = useQueryClient();
 
   const { data: sedes = [] } = useQuery({
@@ -69,7 +72,21 @@ export default function SettingsPage() {
     },
   });
 
+  const { data: empresas = [] } = useQuery({
+    queryKey: ['empresas-admin'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('empresas').select('*').order('razon_social');
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const refrescar = (tabla: Tabla) => {
+    if (tabla === 'empresas') {
+      queryClient.invalidateQueries({ queryKey: ['empresas-admin'] });
+      queryClient.invalidateQueries({ queryKey: ['empresas-activas'] });
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: [tabla === 'sedes' ? 'sedes-config' : 'labs-config'] });
     // Listas de sedes y laboratorios en el resto de la app.
     queryClient.invalidateQueries({ queryKey: ['sedes-activas'] });
@@ -94,7 +111,7 @@ export default function SettingsPage() {
 
   const cambiarEstado = useMutation({
     mutationFn: async ({ tabla, id, activo }: { tabla: Tabla; id: string; activo: boolean }) => {
-      const campo = tabla === 'sedes' ? 'estado_activa' : 'estado_activo';
+      const campo = tabla === 'laboratorios' ? 'estado_activo' : 'estado_activa';
       const { error } = await supabase.from(tabla).update({ [campo]: activo } as any).eq('id', id);
       if (error) throw error;
     },
@@ -108,6 +125,7 @@ export default function SettingsPage() {
   const eliminar = useMutation({
     mutationFn: async ({ tabla, id }: { tabla: Tabla; id: string; nombre: string }) => {
       const { error } = await supabase.from(tabla).delete().eq('id', id);
+      if (error?.code === '23503') throw new Error('Tiene pacientes u órdenes asociados: desactívela con el interruptor en lugar de eliminarla');
       if (error) throw error;
     },
     onSuccess: (_, { tabla, nombre }) => {
@@ -149,9 +167,12 @@ export default function SettingsPage() {
         onClick={() => {
           const quedan = tabla === 'sedes'
             ? 'Los pacientes, citas y órdenes que la usaban se conservan sin sede, y se borran las franjas de horario de esa sede.'
-            : 'Las órdenes y garantías que lo usaban se conservan sin laboratorio asignado.';
-          if (confirm(`¿Eliminar "${fila.nombre}" definitivamente?\n\n${quedan}\n\nSi solo quiere dejar de usarlo, use el interruptor para desactivarlo.`)) {
-            eliminar.mutate({ tabla, id: fila.id, nombre: fila.nombre });
+            : tabla === 'empresas'
+              ? 'Solo se puede eliminar si ningún paciente ni orden la usa.'
+              : 'Las órdenes y garantías que lo usaban se conservan sin laboratorio asignado.';
+          const nombre = fila.nombre ?? fila.razon_social;
+          if (confirm(`¿Eliminar "${nombre}" definitivamente?\n\n${quedan}\n\nSi solo quiere dejar de usarlo, use el interruptor para desactivarlo.`)) {
+            eliminar.mutate({ tabla, id: fila.id, nombre });
           }
         }}>
         <Trash2 className="h-4 w-4" />
@@ -161,12 +182,13 @@ export default function SettingsPage() {
 
   return (
     <AppLayout>
-      <PageHeader title="Configuración" description="Configuración del sistema, sedes y laboratorios" />
+      <PageHeader title="Configuración" description="Sedes, laboratorios, empresas con convenio, festivos e impresión" />
 
       <Tabs defaultValue="sedes">
         <TabsList className="mb-4">
           <TabsTrigger value="sedes">Sedes</TabsTrigger>
           <TabsTrigger value="laboratorios">Laboratorios</TabsTrigger>
+          <TabsTrigger value="empresas">Empresas</TabsTrigger>
           <TabsTrigger value="festivos"><CalendarDays className="h-4 w-4 mr-1" />Festivos</TabsTrigger>
           <TabsTrigger value="impresion"><Printer className="h-4 w-4 mr-1" />Impresión</TabsTrigger>
         </TabsList>
@@ -236,7 +258,43 @@ export default function SettingsPage() {
             </Table>
           </Card>
         </TabsContent>
+
+        <TabsContent value="empresas">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-sm text-muted-foreground">Empresas con convenio de las que vienen los pacientes. El descuento se aplica al crear la orden. También se pueden crear desde el registro del paciente.</p>
+            <Button className="shrink-0" onClick={() => setEmpresaEdit({})}><Plus className="h-4 w-4 mr-1" />Nueva empresa</Button>
+          </div>
+          <Card>
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead>Empresa</TableHead>
+                <TableHead>NIT</TableHead>
+                <TableHead>Descuento</TableHead>
+                <TableHead>Contacto</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {empresas.length === 0 && (
+                  <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-6">Aún no hay empresas registradas.</TableCell></TableRow>
+                )}
+                {empresas.map((e: any) => (
+                  <TableRow key={e.id} className={e.estado_activa ? '' : 'opacity-60'}>
+                    <TableCell className="font-medium flex items-center gap-2"><Building2 className="h-4 w-4 text-muted-foreground" />{e.razon_social}</TableCell>
+                    <TableCell className="text-sm">{e.nit}</TableCell>
+                    <TableCell className="text-sm">{e.porcentaje_descuento} %</TableCell>
+                    <TableCell className="text-sm">{[e.contacto_rrhh, e.telefono].filter(Boolean).join(' · ') || '—'}</TableCell>
+                    <TableCell><Badge variant={e.estado_activa ? 'default' : 'secondary'}>{e.estado_activa ? 'Activa' : 'Inactiva'}</Badge></TableCell>
+                    <TableCell>{acciones('empresas', e, e.estado_activa, () => setEmpresaEdit(e))}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <EmpresaDialog empresa={empresaEdit} onOpenChange={(o) => { if (!o) setEmpresaEdit(null); }} />
 
       {/* Sede: crear / editar */}
       <Dialog open={!!sedeEdit} onOpenChange={(o) => { if (!o) setSedeEdit(null); }}>

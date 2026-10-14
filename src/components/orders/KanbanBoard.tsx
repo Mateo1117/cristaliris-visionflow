@@ -17,7 +17,7 @@ import type { EstadoProducto, OrdenProducto } from '@/types';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { FlaskConical, Search, Settings2, X } from 'lucide-react';
-import { COLORES_ETAPA, moverEtapa, nombreCorto, useEtapasKanban } from '@/lib/etapasKanban';
+import { COLORES_ETAPA, mensajeMovimiento, moverEtapa, nombreCorto, useEtapasKanban } from '@/lib/etapasKanban';
 import { EtapasKanbanDialog } from './EtapasKanbanDialog';
 import { filtrarKanban, monturasPorOrden, resumenLaboratorios, type FiltrosKanban, type TipoFiltro } from '@/lib/kanbanFiltros';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -132,12 +132,12 @@ export function KanbanBoard() {
         estado: newState,
         justificacion: retroceso ? observaciones : null,
         observaciones: retroceso ? null : observaciones,
-      }).then((r) => ({ esReproceso: r.reproceso })),
+      }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['qc-productos'] });
       queryClient.invalidateQueries({ queryKey: ['alertas-produccion-lab'] });
-      toast.success(res?.esReproceso ? 'Estado actualizado — marcado como reproceso interno' : 'Estado actualizado');
+      toast.success(mensajeMovimiento(res));
     },
     onError: (e: any) => toast.error(e.message || 'No se pudo actualizar el estado'),
   });

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { etiquetaEstadoProducto, type EstadoProducto } from '@/types';
-import { etapasVisibles, moverEtapa } from '@/lib/etapasKanban';
+import { etapasVisibles, mensajeMovimiento, moverEtapa } from '@/lib/etapasKanban';
 import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -304,7 +304,7 @@ export default function ScanQR() {
 
     setUpdating(true);
     try {
-      const { reproceso: esReproceso } = await moverEtapa({
+      const resultado = await moverEtapa({
         id: product.id,
         estado: targetState,
         metodo: 'qr_scan',
@@ -314,11 +314,7 @@ export default function ScanQR() {
       setProduct(prev => prev ? { ...prev, estado_actual: targetState } : null);
       setJustificacion('');
       setSuccess(true);
-      toast.success(
-        esReproceso
-          ? `Estado actualizado a: ${targetLabel} — marcado como reproceso interno`
-          : `Estado actualizado a: ${targetLabel}`,
-      );
+      toast.success(mensajeMovimiento(resultado, targetLabel));
     } catch (err: any) {
       toast.error(err.message || 'No se pudo actualizar el estado');
     } finally {

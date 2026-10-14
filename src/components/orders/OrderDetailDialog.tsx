@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { etiquetaEstadoProducto, type OrdenProducto } from '@/types';
-import { etapasVisibles, moverEtapa } from '@/lib/etapasKanban';
+import { etapasVisibles, mensajeMovimiento, moverEtapa } from '@/lib/etapasKanban';
 import { supabase } from '@/integrations/supabase/client';
 import { listarFotos } from './fotosOrden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -188,14 +188,14 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
 
   const changeState = useMutation({
     mutationFn: ({ id, newState, justificacion, retroceso }: { id: string; newState: string; oldState: string; justificacion?: string; retroceso?: boolean }) =>
-      moverEtapa({ id, estado: newState, justificacion: retroceso ? justificacion : null }).then((r) => ({ esReproceso: r.reproceso })),
+      moverEtapa({ id, estado: newState, justificacion: retroceso ? justificacion : null }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       // También el detalle abierto, para que lo editado se vea y se imprima ya.
       queryClient.invalidateQueries({ queryKey: ['orden-producto-detalle', item?.id] });
       queryClient.invalidateQueries({ queryKey: ['estado-historial', item?.id] });
       queryClient.invalidateQueries({ queryKey: ['alertas-produccion-lab'] });
-      toast.success(res?.esReproceso ? 'Estado actualizado — marcado como reproceso interno' : 'Estado actualizado');
+      toast.success(mensajeMovimiento(res));
     },
     onError: (e: any) => toast.error(e.message || 'No se pudo actualizar el estado'),
   });

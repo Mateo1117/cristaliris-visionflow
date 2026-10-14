@@ -13,6 +13,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { User, Eye, FileText, Plus, Pencil, Phone, Mail, MapPin, Building2, Calendar } from 'lucide-react';
 import { calcularEdad, formatearFechaColombia } from './patientUtils';
+import { DatosPacienteHC } from './DatosPacienteHC';
+import { actualizarDatosPaciente, leerDatosPaciente, validarDatosPaciente } from './pacienteComplementario';
 
 interface Props {
   paciente: any | null;
@@ -71,10 +73,13 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
         plan_manejo: formData.plan_manejo,
         observaciones: formData.observaciones,
         firma_optometra: formData.firma_optometra || null,
+        ocupacion: leerDatosPaciente(formData).ocupacion || paciente.ocupacion || null,
       });
       if (error) throw error;
+      await actualizarDatosPaciente(paciente, formData);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] });
       queryClient.invalidateQueries({ queryKey: ['historias-paciente', paciente?.id] });
       setShowNewRecord(false);
       toast.success('Historia clínica creada exitosamente');
@@ -87,6 +92,8 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
     const fd = new FormData(e.currentTarget);
     const data: Record<string, any> = {};
     fd.forEach((v, k) => { data[k] = v; });
+    const errorDatos = validarDatosPaciente(data);
+    if (errorDatos) { toast.error(errorDatos); return; }
     createHistoria.mutate(data);
   };
 
@@ -332,6 +339,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
                   <p className="font-medium">{paciente.tipo_documento} {paciente.numero_documento} — {paciente.nombres} {paciente.apellidos}</p>
                   {paciente.telefono && <p className="text-xs text-muted-foreground">Tel: {paciente.telefono}</p>}
                 </div>
+                <DatosPacienteHC paciente={paciente} />
                 <div className="space-y-2">
                   <Label>Motivo de Consulta / Anamnesis</Label>
                   <Textarea name="anamnesis" placeholder="Describa el motivo de consulta..." rows={3} />

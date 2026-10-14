@@ -2,7 +2,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useEffect } from 'react';
 import { useForm, type FieldErrors } from 'react-hook-form';
@@ -20,18 +19,6 @@ interface PatientFormProps {
   initialData?: Record<string, any> | null;
 }
 
-const MODALIDADES = [
-  { value: 'contado', label: 'Contado' },
-  { value: 'nomina', label: 'Descuento por Nómina' },
-  { value: 'llave', label: 'Llave' },
-  { value: 'tarjeta', label: 'Tarjeta de Crédito' },
-  { value: 'addi', label: 'Addi' },
-  { value: 'sistecredito', label: 'Sistecrédito' },
-  { value: 'efectivo', label: 'Efectivo' },
-  { value: 'datafono', label: 'Datáfono' },
-  { value: 'transferencia', label: 'Transferencia' },
-  { value: 'cuotas', label: 'Cuotas' },
-];
 
 export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialData }: PatientFormProps) {
   const isEditing = !!initialData;
@@ -41,11 +28,6 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
     defaultValues: valoresIniciales(initialData),
     mode: 'onBlur',
   });
-
-  const empresaId = form.watch('empresa_id');
-  const empleadoId = form.watch('empleado_titular_id');
-  const modalidad = form.watch('modalidad_pago');
-  const esNomina = empresaId !== 'ninguna';
 
   // Al abrir el diálogo (o cambiar el paciente en edición) se recarga el estado.
   useEffect(() => {
@@ -64,32 +46,6 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
       return data;
     },
   });
-
-  const { data: empleados = [] } = useQuery({
-    queryKey: ['empleados-empresa', empresaId],
-    queryFn: async () => {
-      if (empresaId === 'ninguna') return [];
-      const { data, error } = await supabase
-        .from('empleados_nomina')
-        .select('id, nombre, cedula, celular')
-        .eq('empresa_id', empresaId)
-        .eq('activo', true)
-        .order('nombre');
-      if (error) throw error;
-      return data;
-    },
-    enabled: empresaId !== 'ninguna',
-  });
-
-  // Al escoger un titular ya registrado se copian sus datos al formulario.
-  useEffect(() => {
-    if (!empleadoId || empleadoId === 'nuevo') return;
-    const emp = empleados.find((e: any) => e.id === empleadoId);
-    if (!emp) return;
-    form.setValue('empleado_titular_nombre', emp.nombre || '', { shouldValidate: true });
-    form.setValue('empleado_titular_cedula', emp.cedula || '', { shouldValidate: true });
-    form.setValue('empleado_titular_celular', emp.celular || '', { shouldValidate: true });
-  }, [empleadoId, empleados]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Los mensajes de error quedan junto a cada campo y, en un formulario largo,
   // fuera de la vista: el botón "Guardar" parecía no hacer nada. Pacientes
@@ -133,7 +89,12 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{isEditing ? 'Editar Paciente' : 'Nuevo Paciente'}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{isEditing ? 'Editar Paciente' : 'Nuevo Paciente'}</DialogTitle>
+          <p className="text-xs text-muted-foreground">
+            Fecha de nacimiento, dirección y ocupación se completan al crear la historia clínica.
+          </p>
+        </DialogHeader>
         <Form {...form}>
           <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={form.handleSubmit(enviar, avisarErrores)} noValidate>
             <FormField
@@ -141,7 +102,7 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
               name="tipo_documento"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Tipo Documento</FormLabel>
+                  <FormLabel>Tipo Documento *</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -163,7 +124,7 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
               name="numero_documento"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Número de Documento</FormLabel>
+                  <FormLabel>Número de Documento *</FormLabel>
                   <FormControl><Input placeholder="Ingrese número" inputMode="numeric" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -175,7 +136,7 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
               name="nombres"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Nombres</FormLabel>
+                  <FormLabel>Nombres *</FormLabel>
                   <FormControl><Input placeholder="Nombres" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -187,31 +148,31 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
               name="apellidos"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Apellidos</FormLabel>
+                  <FormLabel>Apellidos *</FormLabel>
                   <FormControl><Input placeholder="Apellidos" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
+
             <FormField
               control={form.control}
-              name="fecha_nacimiento"
+              name="telefono"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Fecha de Nacimiento</FormLabel>
-                  <FormControl><Input type="date" {...field} /></FormControl>
+                  <FormLabel>Teléfono *</FormLabel>
+                  <FormControl><Input placeholder="3XX XXX XXXX" inputMode="tel" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="genero"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Género</FormLabel>
+                  <FormLabel>Género *</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
@@ -227,60 +188,51 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="telefono"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Teléfono</FormLabel>
-                  <FormControl><Input placeholder="3XX XXX XXXX" inputMode="tel" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Correo (opcional)</FormLabel>
                   <FormControl><Input type="email" placeholder="email@ejemplo.com" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
+
+
             <FormField
               control={form.control}
-              name="ocupacion"
+              name="empresa_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Ocupación</FormLabel>
-                  <FormControl><Input placeholder="Ej: Ingeniero, Docente" {...field} /></FormControl>
+                  <FormLabel>Empresa de la que viene *</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger><SelectValue placeholder="Sin empresa" /></SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="ninguna">Particular (sin empresa)</SelectItem>
+                      {empresas.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>{e.razon_social}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
-            <FormField
-              control={form.control}
-              name="direccion"
-              render={({ field }) => (
-                <FormItem className="md:col-span-2">
-                  <FormLabel>Dirección</FormLabel>
-                  <FormControl><Input placeholder="Dirección completa" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <FormField
               control={form.control}
               name="ciudad"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Ciudad</FormLabel>
+                  <FormLabel>Ciudad *</FormLabel>
                   <FormControl><Input placeholder="Ciudad" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -292,141 +244,13 @@ export function PatientForm({ open, onOpenChange, onSubmit, isPending, initialDa
               name="departamento"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Departamento</FormLabel>
+                  <FormLabel>Departamento *</FormLabel>
                   <FormControl><Input placeholder="Departamento" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="empresa_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Empresa (convenio)</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(v) => {
-                      field.onChange(v);
-                      form.setValue('empleado_titular_id', 'nuevo');
-                    }}
-                  >
-                    <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Sin empresa" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="ninguna">Sin empresa / Particular</SelectItem>
-                      {empresas.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>{e.razon_social}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="modalidad_pago"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Modalidad de Pago</FormLabel>
-                  <Select value={esNomina ? 'nomina' : modalidad} onValueChange={field.onChange} disabled={esNomina}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {MODALIDADES.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {esNomina && (
-              <>
-                <div className="md:col-span-2"><Separator /></div>
-                <div className="md:col-span-2">
-                  <h3 className="text-sm font-semibold">Empleado Titular (Nómina)</h3>
-                  <p className="text-xs text-muted-foreground">Persona empleada de la empresa que autoriza el descuento por nómina.</p>
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="empleado_titular_id"
-                  render={({ field }) => (
-                    <FormItem className="md:col-span-2">
-                      <FormLabel>Empleado registrado</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="nuevo">+ Nuevo titular (digitar manualmente)</SelectItem>
-                          {empleados.map((e: any) => (
-                            <SelectItem key={e.id} value={e.id}>{e.nombre} — CC {e.cedula}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="empleado_titular_nombre"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nombre titular</FormLabel>
-                      <FormControl><Input placeholder="Nombre completo" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="empleado_titular_cedula"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cédula titular</FormLabel>
-                      <FormControl><Input placeholder="Número de cédula" inputMode="numeric" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="empleado_titular_celular"
-                  render={({ field }) => (
-                    <FormItem className="md:col-span-2">
-                      <FormLabel>Celular titular</FormLabel>
-                      <FormControl><Input placeholder="3XX XXX XXXX" inputMode="tel" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </>
-            )}
-
-            <FormField
-              control={form.control}
-              name="referido_por"
-              render={({ field }) => (
-                <FormItem className="md:col-span-2">
-                  <FormLabel>Referido por</FormLabel>
-                  <FormControl><Input placeholder="Nombre de quien refiere al paciente (opcional)" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <div className="md:col-span-2 flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

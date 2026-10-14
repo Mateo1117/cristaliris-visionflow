@@ -85,6 +85,8 @@ describe('pacienteSchema', () => {
     numero_documento: '1023456789',
     nombres: 'María',
     apellidos: 'García',
+    telefono: '3101234567',
+    genero: 'F',
     ...extra,
   });
 
@@ -108,8 +110,16 @@ describe('pacienteSchema', () => {
     expect(pacienteSchema.safeParse(base({ tipo_documento: 'PA', numero_documento: 'AV12345' })).success).toBe(true);
   });
 
-  it('valida email y teléfono sólo si vienen llenos', () => {
-    expect(pacienteSchema.safeParse(base({ email: '', telefono: '' })).success).toBe(true);
+  it('exige teléfono, género, ciudad y departamento; el email es opcional', () => {
+    expect(pacienteSchema.safeParse(base({ email: '' })).success).toBe(true);
+    const e = errores(base({ telefono: '', genero: '', ciudad: '', departamento: '' }));
+    expect(e.telefono).toBeTruthy();
+    expect(e.genero).toBeTruthy();
+    expect(e.ciudad).toBeTruthy();
+    expect(e.departamento).toBeTruthy();
+  });
+
+  it('valida el formato de email y teléfono', () => {
     expect(errores(base({ email: 'correo-malo' })).email).toBeTruthy();
     expect(errores(base({ telefono: '123' })).telefono).toBeTruthy();
     expect(pacienteSchema.safeParse(base({ telefono: '310 123 4567' })).success).toBe(true);
@@ -123,9 +133,8 @@ describe('pacienteSchema', () => {
     expect(pacienteSchema.safeParse(base({ fecha_nacimiento: '1990-05-30' })).success).toBe(true);
   });
 
-  it('exige el titular cuando hay empresa de convenio', () => {
-    const e = errores(base({ empresa_id: 'emp-1' }));
-    expect(e.empleado_titular_nombre).toBeTruthy();
-    expect(e.empleado_titular_cedula).toBeTruthy();
+  it('no exige el titular de nómina al registrar con empresa', () => {
+    expect(pacienteSchema.safeParse(base({ empresa_id: 'emp-1' })).success).toBe(true);
+    expect(errores(base({ empresa_id: 'emp-1', empleado_titular_cedula: 'abc' })).empleado_titular_cedula).toBeTruthy();
   });
 });

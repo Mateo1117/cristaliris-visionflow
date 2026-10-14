@@ -19,6 +19,8 @@ import { hoyColombia, toFechaColombia } from '@/lib/businessDays';
 import { calcularEdad } from '@/components/patients/patientUtils';
 import { printHtmlDocument } from '@/lib/printing/thermal';
 import { toast } from 'sonner';
+import { DatosPacienteHC } from '@/components/patients/DatosPacienteHC';
+import { actualizarDatosPaciente, leerDatosPaciente, validarDatosPaciente } from '@/components/patients/pacienteComplementario';
 
 /**
  * Escapa un valor antes de interpolarlo en el HTML de impresión.
@@ -155,7 +157,7 @@ export default function ClinicalRecords() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pacientes')
-        .select('id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion')
+        .select('id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por')
         .order('nombres');
       if (error) throw error;
       return data;
@@ -174,7 +176,7 @@ export default function ClinicalRecords() {
         paciente_id: formData.paciente_id,
         anamnesis: formData.anamnesis,
         antecedentes: formData.antecedentes,
-        ocupacion: formData.ocupacion,
+        ocupacion: leerDatosPaciente(formData).ocupacion || null,
         agudeza_visual_od: formData.agudeza_visual_od,
         agudeza_visual_oi: formData.agudeza_visual_oi,
         av_sin_correccion_od: formData.av_sin_correccion_od,
@@ -216,9 +218,12 @@ export default function ClinicalRecords() {
       };
       const { error } = await supabase.from('historias_clinicas').insert(payload);
       if (error) throw error;
+      if (pacienteSeleccionado) await actualizarDatosPaciente(pacienteSeleccionado, formData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['historias'] });
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] });
+      queryClient.invalidateQueries({ queryKey: ['pacientes-select'] });
       setShowForm(false);
       setSelectedPaciente(null);
       toast.success('Historia clínica creada exitosamente');
@@ -233,6 +238,8 @@ export default function ClinicalRecords() {
     fd.forEach((v, k) => { data[k] = v; });
     if (!selectedPaciente) { toast.error('Seleccione un paciente'); return; }
     data.paciente_id = selectedPaciente;
+    const errorDatos = validarDatosPaciente(data);
+    if (errorDatos) { toast.error(errorDatos); return; }
     createHistoria.mutate(data);
   };
 
@@ -430,10 +437,7 @@ export default function ClinicalRecords() {
                     <Input value={edadSeleccionado != null ? `${edadSeleccionado} años` : ''} placeholder="—" disabled />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Ocupación</Label>
-                  <Input name="ocupacion" defaultValue={pacienteSeleccionado?.ocupacion || ''} placeholder="Ej: Contador, estudiante..." />
-                </div>
+                <DatosPacienteHC paciente={pacienteSeleccionado} />
                 <div className="space-y-2">
                   <Label>Motivo de Consulta / Anamnesis</Label>
                   <Textarea name="anamnesis" placeholder="Describa el motivo de consulta..." rows={3} />

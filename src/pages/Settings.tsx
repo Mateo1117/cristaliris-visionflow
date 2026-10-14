@@ -114,16 +114,7 @@ export default function SettingsPage() {
       refrescar(tabla);
       toast.success(`"${nombre}" eliminado`);
     },
-    onError: (e: any, { tabla, id, nombre }) => {
-      // 23503: otras tablas lo referencian (pacientes, citas, órdenes, garantías…).
-      if (e.code === '23503') {
-        if (confirm(`"${nombre}" ya se usó en registros del sistema y no se puede eliminar sin perder historial.\n\n¿Desactivarlo en su lugar?`)) {
-          cambiarEstado.mutate({ tabla, id, activo: false });
-        }
-        return;
-      }
-      toast.error(e.message);
-    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   const enviarSede = (e: React.FormEvent<HTMLFormElement>) => {
@@ -155,7 +146,14 @@ export default function SettingsPage() {
       <Switch checked={activo} onCheckedChange={(v) => cambiarEstado.mutate({ tabla, id: fila.id, activo: v })} aria-label={activo ? 'Desactivar' : 'Activar'} />
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={editar} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label="Eliminar"
-        onClick={() => { if (confirm(`¿Eliminar "${fila.nombre}"?`)) eliminar.mutate({ tabla, id: fila.id, nombre: fila.nombre }); }}>
+        onClick={() => {
+          const quedan = tabla === 'sedes'
+            ? 'Los pacientes, citas y órdenes que la usaban se conservan sin sede, y se borran las franjas de horario de esa sede.'
+            : 'Las órdenes y garantías que lo usaban se conservan sin laboratorio asignado.';
+          if (confirm(`¿Eliminar "${fila.nombre}" definitivamente?\n\n${quedan}\n\nSi solo quiere dejar de usarlo, use el interruptor para desactivarlo.`)) {
+            eliminar.mutate({ tabla, id: fila.id, nombre: fila.nombre });
+          }
+        }}>
         <Trash2 className="h-4 w-4" />
       </Button>
     </div>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildDefaultLayout,
+  fuenteQueCabe,
   clampLayout,
   elementHeightMm,
   reflowLayout,
@@ -240,5 +241,19 @@ describe('buildDefaultLayout + escalado', () => {
       expect(el.xMm + el.wMm).toBeLessThanOrEqual(50 + 0.01);
       expect(el.yMm + elementHeightMm(el)).toBeLessThanOrEqual(30 + 0.01);
     }
+  });
+});
+
+describe('fuenteQueCabe', () => {
+  it('no cambia un texto que cabe', () => {
+    expect(fuenteQueCabe('ORD-00013', 8, 28, true)).toBe(8);
+  });
+  it('reduce la letra para que el nombre completo quepa en 28 mm', () => {
+    const f = fuenteQueCabe('Maria Victoria Castiblanco', 8, 28);
+    expect(f).toBeLessThan(8);
+    expect(26 * 0.55 * f * 0.3528).toBeLessThanOrEqual(28.1);
+  });
+  it('no baja de la mitad del tamaño diseñado', () => {
+    expect(fuenteQueCabe('x'.repeat(200), 8, 28)).toBe(4);
   });
 });

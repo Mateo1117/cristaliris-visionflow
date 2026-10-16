@@ -343,3 +343,19 @@ export const clampLayout = (layout: LabelLayout, widthMm: number, heightMm: numb
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const clampNum = (n: number, min: number, max: number) =>
   !Number.isFinite(n) ? min : Math.max(min, Math.min(max, n));
+
+/**
+ * Tamaño de letra para que el texto quepa en el ancho del elemento sin
+ * cortarse con "…" (en una etiqueta de 30 mm el nombre completo o la
+ * descripción del lente no cabían). Reduce hasta `minimo` del tamaño
+ * diseñado; solo por debajo de eso se recorta.
+ *
+ * Ancho estimado en Helvetica: ≈ 0,55 em por carácter (0,6 en negrita);
+ * 1 pt = 0,3528 mm.
+ */
+export const fuenteQueCabe = (texto: string, fontSizePt: number, anchoMm: number, bold = false, minimo = 0.5): number => {
+  const em = bold ? 0.6 : 0.55;
+  const anchoTexto = texto.length * em * fontSizePt * 0.3528;
+  if (anchoTexto <= anchoMm || anchoTexto === 0) return fontSizePt;
+  return Math.floor(Math.max(fontSizePt * minimo, fontSizePt * (anchoMm / anchoTexto)) * 10) / 10;
+};

@@ -21,6 +21,7 @@ import {
   type LabelElement,
   type LabelField,
   type LabelLayout,
+  fuenteQueCabe,
 } from './labelLayout';
 import { loadLabelCalibration } from './calibration';
 
@@ -354,14 +355,17 @@ const renderLayoutToHtml = async (
 
     const raw = fieldValue(el.field, data, el.text);
     if (!raw) continue;
-    const txt = escapeHtml((el.prefix || '') + raw);
+    const texto = (el.prefix || '') + raw;
+    const txt = escapeHtml(texto);
     const align = el.align || 'left';
     const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
     const alto = Math.max(2, el.fontSize * 0.5);
+    // Se reduce la letra para que quepa completo en vez de cortarlo con "…".
+    const fuente = fuenteQueCabe(texto, el.fontSize, el.wMm, !!el.bold);
 
     partes.push(
       `<div class="el txt" style="left:${el.xMm}mm;top:${el.yMm}mm;width:${el.wMm}mm;height:${alto}mm;` +
-      `font-size:${el.fontSize}pt;font-weight:${el.bold ? 700 : 400};justify-content:${justify};">` +
+      `font-size:${fuente}pt;font-weight:${el.bold ? 700 : 400};justify-content:${justify};">` +
       `<span>${txt}</span></div>`,
     );
   }
@@ -411,12 +415,17 @@ const renderLayoutToCanvas = async (
     if (!raw) continue;
     const txt = (el.prefix || '') + raw;
 
-    const fontPx = ptToPx(Math.max(4, el.fontSize));
-    ctx.font = `${el.bold ? 'bold ' : ''}${fontPx}px Helvetica, Arial, sans-serif`;
-    ctx.textBaseline = 'top';
-    const align = el.align || 'left';
-    ctx.textAlign = align as CanvasTextAlign;
     const maxWpx = Math.max(4, el.wMm * pxPerMm);
+    const align = el.align || 'left';
+    // Se reduce la letra (hasta la mitad) para que quepa completo; solo
+    // por debajo de eso se recorta con "…".
+    let fontPt = Math.max(4, el.fontSize);
+    const minPt = fontPt * 0.5;
+    const fijarFuente = () => { ctx.font = `${el.bold ? 'bold ' : ''}${ptToPx(fontPt)}px Helvetica, Arial, sans-serif`; };
+    fijarFuente();
+    while (ctx.measureText(txt).width > maxWpx && fontPt > minPt) { fontPt = Math.max(minPt, fontPt - 0.25); fijarFuente(); }
+    ctx.textBaseline = 'top';
+    ctx.textAlign = align as CanvasTextAlign;
 
     // Clip con elipsis
     let display = txt;

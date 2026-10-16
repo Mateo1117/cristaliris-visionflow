@@ -141,7 +141,8 @@ export default function Warranties() {
         ciclo,
         subcodigo,
         envio_asumido_por: formData.envio_asumido_por || null,
-        guia_envio: formData.guia_envio || null,
+        // N° de orden que da el laboratorio a la garantía (columna histórica guia_envio).
+        guia_envio: formData.numero_orden_laboratorio || null,
         tipo: formData.tipo,
         formula_nueva: formData.formula_nueva ?? null,
         tipo_lente_tiempo: formData.tipo_lente_tiempo || null,
@@ -157,6 +158,8 @@ export default function Warranties() {
         garantia_codigo: subcodigo,
         ...(formData.laboratorio_id ? { laboratorio_id: formData.laboratorio_id } : {}),
         ...(formData.tipo_lente_tiempo ? { tipo_lente_tiempo: formData.tipo_lente_tiempo } : {}),
+        // El nuevo N° de orden del laboratorio sale en la etiqueta del trabajo.
+        ...(formData.numero_orden_laboratorio ? { numero_orden_laboratorio: formData.numero_orden_laboratorio } : {}),
       }).eq('id', formData.orden_producto_id);
       if (errProducto) throw errProducto;
 
@@ -429,7 +432,7 @@ export default function Warranties() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Envío asumido por</Label>
+                <Label>Garantía asumida por</Label>
                 <Select name="envio_asumido_por">
                   <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
                   <SelectContent>
@@ -440,8 +443,8 @@ export default function Warranties() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Guía de Envío</Label>
-                <Input name="guia_envio" placeholder="No. guía" />
+                <Label>N° de orden del laboratorio</Label>
+                <Input name="numero_orden_laboratorio" placeholder="Ej: LAB-4821" />
               </div>
             </div>
 

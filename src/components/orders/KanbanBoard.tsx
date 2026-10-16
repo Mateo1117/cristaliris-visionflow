@@ -28,21 +28,7 @@ import {
   useFestivos,
 } from '@/lib/businessDays';
 import { toast } from 'sonner';
-
-function getTiempoEsperado(tipoLenteTiempo: string | null, labDefault: number | null): number {
-  switch (tipoLenteTiempo) {
-    case 'progresivo':
-    case 'talla':
-    case 'sol_formula':
-      return 3;
-    case 'terminado':
-      return 1;
-    case 'montura_3piezas':
-      return 2;
-    default:
-      return labDefault || 3;
-  }
-}
+import { tiempoEntrega } from '@/lib/tiempoEntrega';
 
 const etiquetaEstado = (key: string) => etiquetaEstadoProducto(key);
 
@@ -109,7 +95,8 @@ export function KanbanBoard() {
         created_at: p.created_at,
         // Días HÁBILES en el estado actual (lun-vie, sin festivos) — README 3.3.
         dias_en_estado: Math.max(0, diasHabilesEntre(p.updated_at, new Date(), festivos)),
-        tiempo_esperado_dias: getTiempoEsperado(p.tipo_lente_tiempo, p.laboratorios?.tiempo_promedio_entrega),
+        // Manda el tiempo configurado del laboratorio (Configuración → Laboratorios).
+        tiempo_esperado_dias: tiempoEntrega(p.laboratorios?.tiempo_promedio_entrega, p.tipo_lente_tiempo).dias,
         es_garantia: p.es_garantia || false,
         es_reproceso: p.es_reproceso || false,
         precio_venta: p.precio_venta || 0,

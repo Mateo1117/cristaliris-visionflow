@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { tiempoEntrega } from '@/lib/tiempoEntrega';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -68,7 +69,7 @@ export function AlertasProduccion() {
       const labStates = ['enviado_laboratorio', 'recibido_laboratorio', 'en_produccion', 'producido'] as const;
       const { data, error } = await supabase
         .from('orden_productos')
-        .select('id, orden_id, descripcion, tipo_producto, lente_tipo, tipo_lente_tiempo, estado_actual, fecha_envio_lab, created_at, laboratorios(nombre), ordenes(pacientes(nombres, apellidos))')
+        .select('id, orden_id, descripcion, tipo_producto, lente_tipo, tipo_lente_tiempo, estado_actual, fecha_envio_lab, created_at, laboratorios(nombre, tiempo_promedio_entrega), ordenes(pacientes(nombres, apellidos))')
         .in('estado_actual', [...labStates]);
       if (error) throw error;
 
@@ -79,7 +80,12 @@ export function AlertasProduccion() {
         const fechaRef = p.fecha_envio_lab || p.created_at;
         // Días HÁBILES desde el envío al laboratorio (README 3.4).
         const dias = Math.max(0, diasHabilesEntre(fechaRef, now, festivos));
-        const { maxDays, categoria } = getMaxDays(p.tipo_producto, p.lente_tipo, p.tipo_lente_tiempo, p.descripcion);
+        // Manda el tiempo configurado del laboratorio; sin él, la regla por tipo de lente.
+        const porTipo = getMaxDays(p.tipo_producto, p.lente_tipo, p.tipo_lente_tiempo, p.descripcion);
+        const t = tiempoEntrega(p.laboratorios?.tiempo_promedio_entrega, null);
+        const { maxDays, categoria } = t.origen === 'laboratorio'
+          ? { maxDays: t.dias, categoria: `Tiempo de ${p.laboratorios?.nombre}` }
+          : porTipo;
 
         if (dias >= maxDays) {
           results.push({

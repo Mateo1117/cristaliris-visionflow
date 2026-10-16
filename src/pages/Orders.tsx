@@ -12,7 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2, Kanban, List, Ruler, MessageCircle } from 'lucide-react';
+import { Plus, Trash2, Kanban, List, Ruler, MessageCircle, Clock } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { faltaMigracion, registrarResultadoConsulta, textoFormula, type HistoriaPorFacturar } from '@/lib/flujoAtencion';
@@ -20,6 +20,8 @@ import { textoVentaDirecta, tomarVentaDirecta } from '@/lib/ventaDirecta';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { etiquetaCategoria } from '@/lib/catalogo';
+import { useFestivos } from '@/lib/businessDays';
+import { fechaCorta, fechaEntregaEstimada, textoDias, tiempoEntrega } from '@/lib/tiempoEntrega';
 import { PacienteSelector } from '@/components/patients/PacienteSelector';
 import { usePacienteSeleccionado } from '@/components/patients/usePacienteSeleccionado';
 import { registrarAplicacionDirecta } from '@/components/billing/abonosDb';
@@ -190,11 +192,20 @@ export default function Orders() {
   const { data: labs = [] } = useQuery({
     queryKey: ['laboratorios-ordenes'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('laboratorios').select('id, nombre').eq('estado_activo', true);
+      const { data, error } = await supabase.from('laboratorios').select('id, nombre, tiempo_promedio_entrega').eq('estado_activo', true).order('nombre');
       if (error) throw error;
       return data;
     },
   });
+
+  const { festivos } = useFestivos();
+  /** Tiempo y fecha estimada de entrega del laboratorio elegido en la línea. */
+  const entregaDe = (it: OrderItem) => {
+    const lab = labs.find((l: any) => l.id === it.laboratorio_id);
+    if (!lab) return null;
+    const t = tiempoEntrega(lab.tiempo_promedio_entrega, it.tipo_lente_tiempo);
+    return { lab: lab.nombre as string, ...t, fecha: fechaEntregaEstimada(new Date(), t.dias, festivos) };
+  };
 
   const { data: pacienteSel } = usePacienteSeleccionado(selectedPaciente, 'id, nombres, apellidos, numero_documento, tipo_documento, telefono, email, modalidad_pago, empresa_id, empresas(razon_social, porcentaje_descuento)');
   const descuentoConvenio: number = (pacienteSel?.empresas?.porcentaje_descuento as number) || 0;
@@ -570,7 +581,11 @@ export default function Orders() {
                           <SelectTrigger><SelectValue placeholder="Sin laboratorio" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">Sin laboratorio</SelectItem>
-                            {labs.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.nombre}</SelectItem>)}
+                            {labs.map((l: any) => (
+                              <SelectItem key={l.id} value={l.id}>
+                                {l.nombre}{l.tiempo_promedio_entrega ? <span className="text-muted-foreground"> · {textoDias(l.tiempo_promedio_entrega)}</span> : null}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -584,15 +599,31 @@ export default function Orders() {
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">—</SelectItem>
-                            <SelectItem value="progresivo">Progresivo (3d)</SelectItem>
-                            <SelectItem value="talla">Talla (3d)</SelectItem>
-                            <SelectItem value="sol_formula">Sol con fórmula (3d)</SelectItem>
-                            <SelectItem value="terminado">Terminado (1d)</SelectItem>
-                            <SelectItem value="montura_3piezas">Montura 3 piezas (2d)</SelectItem>
+                            <SelectItem value="progresivo">Progresivo</SelectItem>
+                            <SelectItem value="talla">Talla</SelectItem>
+                            <SelectItem value="sol_formula">Sol con fórmula</SelectItem>
+                            <SelectItem value="terminado">Terminado</SelectItem>
+                            <SelectItem value="montura_3piezas">Montura 3 piezas</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                     </div>
+
+                    {(() => {
+                      const e = entregaDe(it);
+                      if (!e) return null;
+                      return (
+                        <p className="flex items-center gap-1.5 text-xs rounded-md bg-primary/5 text-primary px-2.5 py-1.5">
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            Entrega del laboratorio: <b>{textoDias(e.dias)}</b> → listo aprox. el <b>{fechaCorta(e.fecha)}</b>
+                            <span className="text-muted-foreground">
+                              {e.origen === 'laboratorio' ? ` (tiempo configurado de ${e.lab})` : ` (${e.lab} no tiene tiempo configurado; se usa el del tipo de lente)`}
+                            </span>
+                          </span>
+                        </p>
+                      );
+                    })()}
 
                     {/* Medidas progresivo */}
                     {it.tipo_lente_tiempo === 'progresivo' && (

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { tiempoEntrega } from '@/lib/tiempoEntrega';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,7 +62,7 @@ export function OrderListView() {
         created_at: p.created_at,
         // Días HÁBILES, igual que en el Kanban (antes aquí eran calendario).
         dias_en_estado: Math.max(0, diasHabilesEntre(p.updated_at, new Date(), festivos)),
-        tiempo_esperado_dias: p.laboratorios?.tiempo_promedio_entrega || 3,
+        tiempo_esperado_dias: tiempoEntrega(p.laboratorios?.tiempo_promedio_entrega, p.tipo_lente_tiempo).dias,
         es_garantia: p.es_garantia || false,
         es_reproceso: p.es_reproceso || false,
         precio_venta: p.precio_venta || 0,

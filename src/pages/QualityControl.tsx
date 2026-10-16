@@ -1,4 +1,5 @@
 import { AppLayout } from '@/components/layout/AppLayout';
+import { tiempoEntrega } from '@/lib/tiempoEntrega';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -137,7 +138,7 @@ export default function QualityControl() {
             <div>
               <p className="text-2xl font-bold">{productos.filter((p: any) => {
                 const dias = diasHabilesEntre(p.updated_at, new Date(), festivos);
-                return dias > (p.laboratorios?.tiempo_promedio_entrega || 3);
+                return dias > tiempoEntrega(p.laboratorios?.tiempo_promedio_entrega, p.tipo_lente_tiempo).dias;
               }).length}</p>
               <p className="text-xs text-muted-foreground">Con retraso (días hábiles)</p>
             </div>
@@ -155,7 +156,7 @@ export default function QualityControl() {
             const paciente = p.ordenes?.pacientes;
             // Días HÁBILES en el estado actual (lun-vie, sin festivos) — README 3.4.
             const dias = Math.max(0, diasHabilesEntre(p.updated_at, new Date(), festivos));
-            const excedido = dias > (p.laboratorios?.tiempo_promedio_entrega || 3);
+            const excedido = dias > tiempoEntrega(p.laboratorios?.tiempo_promedio_entrega, p.tipo_lente_tiempo).dias;
 
             return (
               <Card key={p.id} className={`cursor-pointer hover:shadow-md transition-shadow ${excedido ? 'border-destructive/50' : ''}`}

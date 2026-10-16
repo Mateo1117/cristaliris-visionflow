@@ -282,7 +282,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
 
   // La etiqueta lleva la misma fórmula que se ve en el detalle.
-  const buildFormulaText = async (): Promise<string | undefined> => textoEtiqueta(formulaOrden ?? null);
+  const buildFormulaText = async (): Promise<string | undefined> => textoEtiqueta(formulaOrden);
 
   const printLabel = async () => {
     const svg = document.getElementById('qr-print-area');
@@ -299,10 +299,13 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
       // Siempre lo guardado en la base de datos; la copia del listado es sólo
       // el respaldo mientras la consulta de detalle carga.
       paciente: pacienteNombre,
-      descripcion: campo(detalle?.descripcion, item.descripcion),
+      // Si se está editando, lo escrito aunque todavía no se haya guardado.
+      descripcion: (editingOrder && orderEdit.descripcion.trim()) || campo(detalle?.descripcion, item.descripcion),
       laboratorio: campo(detalle?.laboratorios?.nombre, item.laboratorio_nombre),
-      numeroOrdenLab: campo(detalle?.numero_orden_laboratorio, (item as any).numero_orden_laboratorio),
-      numeroMontura: campo(detalle?.numero_montura, item.numero_montura),
+      numeroOrdenLab: (editingOrder && orderEdit.numero_orden_laboratorio.trim()) || campo(detalle?.numero_orden_laboratorio, (item as any).numero_orden_laboratorio),
+      // La montura va en la tarjeta del lente: su referencia también sale en la etiqueta.
+      numeroMontura: (editingOrder && orderEdit.numero_montura.trim()) || campo(detalle?.numero_montura, item.numero_montura)
+        || ((item as any).montura_orden?.match(/Ref\.\s*(\S+)/)?.[1] ?? undefined),
       // Fecha impresa en la etiqueta: la de entrega prometida si existe y, en
       // su defecto, la de creación de la orden.
       fechaEntrega:

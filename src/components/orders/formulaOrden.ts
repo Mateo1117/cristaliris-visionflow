@@ -1,7 +1,9 @@
 /**
- * Fórmula que corresponde a una orden: la de la historia clínica vinculada
- * a esa orden; si no hay, la última historia del paciente; y en una venta
- * directa (sin consulta), la fórmula externa que quedó en las observaciones.
+ * Fórmula que corresponde a una orden, en este orden de prioridad:
+ *  1. la nueva fórmula de la última garantía del producto (se rehízo el lente);
+ *  2. la de la historia clínica vinculada a esa orden;
+ *  3. en una venta directa (sin consulta), la fórmula externa de las observaciones;
+ *  4. la última historia del paciente con fórmula.
  */
 export interface HistoriaFormula {
   id: string;
@@ -14,22 +16,61 @@ export interface HistoriaFormula {
   formula_tipo_lente: string | null; formula_filtros: string | null; formula_observaciones?: string | null;
 }
 
+export interface Ojo { esfera: number | null; cilindro: number | null; eje: number | null; adicion: number | null; altura: number | null }
+
+/** Fórmula en un solo formato, venga de la historia o de una garantía. */
+export interface Formula {
+  od: Ojo;
+  oi: Ojo;
+  dp: number | null;
+  tipo_lente: string | null;
+  filtros?: string | null;
+  notas?: string | null;
+}
+
+export interface GarantiaFormula { subcodigo: string | null; fecha_solicitud: string; formula_nueva: Formula | null }
+
 export type FormulaOrden =
-  | { origen: 'orden' | 'ultima'; historia: HistoriaFormula }
+  | { origen: 'orden' | 'ultima'; formula: Formula; fecha: string; autor: string | null }
+  | { origen: 'garantia'; formula: Formula; fecha: string; subcodigo: string | null }
   | { origen: 'externa'; texto: string }
   | null;
 
-const tieneValores = (h: HistoriaFormula) =>
-  [h.formula_od_esfera, h.formula_od_cilindro, h.formula_oi_esfera, h.formula_oi_cilindro].some((v) => v != null);
+export const OJO_VACIO: Ojo = { esfera: null, cilindro: null, eje: null, adicion: null, altura: null };
+export const FORMULA_VACIA: Formula = { od: OJO_VACIO, oi: OJO_VACIO, dp: null, tipo_lente: null, filtros: null, notas: null };
 
-/** `historias` ordenadas de la más reciente a la más antigua. */
-export function elegirFormula(historias: HistoriaFormula[], ordenId: string | null | undefined, observacionesOrden?: string | null): FormulaOrden {
-  const deLaOrden = ordenId ? historias.find((h) => h.orden_id === ordenId && tieneValores(h)) : undefined;
-  if (deLaOrden) return { origen: 'orden', historia: deLaOrden };
+export function formulaDesdeHistoria(h: HistoriaFormula): Formula {
+  return {
+    od: { esfera: h.formula_od_esfera, cilindro: h.formula_od_cilindro, eje: h.formula_od_eje, adicion: h.formula_od_adicion, altura: h.altura_pupilar_od },
+    oi: { esfera: h.formula_oi_esfera, cilindro: h.formula_oi_cilindro, eje: h.formula_oi_eje, adicion: h.formula_oi_adicion, altura: h.altura_pupilar_oi },
+    dp: h.distancia_pupilar,
+    tipo_lente: h.formula_tipo_lente,
+    filtros: h.formula_filtros,
+    notas: h.formula_observaciones ?? null,
+  };
+}
+
+export const tieneFormula = (f: Formula | null | undefined) =>
+  !!f && [f.od.esfera, f.od.cilindro, f.oi.esfera, f.oi.cilindro].some((v) => v != null);
+
+/**
+ * `historias` y `garantias` ordenadas de la más reciente a la más antigua.
+ */
+export function elegirFormula(
+  historias: HistoriaFormula[],
+  ordenId: string | null | undefined,
+  observacionesOrden?: string | null,
+  garantias: GarantiaFormula[] = [],
+): FormulaOrden {
+  const g = garantias.find((x) => tieneFormula(x.formula_nueva));
+  if (g) return { origen: 'garantia', formula: g.formula_nueva!, fecha: g.fecha_solicitud, subcodigo: g.subcodigo };
+  const conFormula = historias.filter((h) => tieneFormula(formulaDesdeHistoria(h)));
+  const deLaOrden = ordenId ? conFormula.find((h) => h.orden_id === ordenId) : undefined;
+  if (deLaOrden) return { origen: 'orden', formula: formulaDesdeHistoria(deLaOrden), fecha: deLaOrden.fecha_consulta, autor: deLaOrden.optometra_nombre ?? null };
   const externa = formulaExterna(observacionesOrden);
   if (externa) return { origen: 'externa', texto: externa };
-  const ultima = historias.find(tieneValores);
-  return ultima ? { origen: 'ultima', historia: ultima } : null;
+  const ultima = conFormula[0];
+  return ultima ? { origen: 'ultima', formula: formulaDesdeHistoria(ultima), fecha: ultima.fecha_consulta, autor: ultima.optometra_nombre ?? null } : null;
 }
 
 /** Líneas de "Fórmula externa…" que deja la venta directa en las observaciones. */
@@ -48,3 +89,26 @@ export function formulaExterna(observaciones?: string | null): string | null {
 /** "-1.25", "+0.50", "—" */
 export const valorDioptria = (v: number | null | undefined) =>
   v == null ? '—' : `${Number(v) > 0 ? '+' : ''}${Number(v).toFixed(2)}`;
+
+const ojoCorto = (lado: string, o: Ojo) =>
+  `${lado} ${valorDioptria(o.esfera)}${o.cilindro != null && Number(o.cilindro) !== 0 ? ` ${valorDioptria(o.cilindro)} x${o.eje ?? '—'}` : ''}${o.adicion ? ` Add ${valorDioptria(o.adicion)}` : ''}`;
+
+/** "OD -1.25 -0.50 x180 / OI -1.00" (etiqueta, historial). */
+export const textoCorto = (f: Formula) => `${ojoCorto('OD', f.od)} / ${ojoCorto('OI', f.oi)}`;
+
+/** Texto completo para el historial de la garantía. */
+export function textoFormulaCompleta(f: Formula): string {
+  const partes = [textoCorto(f)];
+  if (f.dp != null) partes.push(`DP ${f.dp}`);
+  if (f.od.altura != null || f.oi.altura != null) partes.push(`Alt ${f.od.altura ?? '—'}/${f.oi.altura ?? '—'}`);
+  if (f.tipo_lente) partes.push(f.tipo_lente);
+  return partes.join(' · ');
+}
+
+/** Convierte lo escrito en el formulario ("-1,25", "", "180") a números. */
+export function leerNumero(v: string): number | null {
+  const t = v.trim().replace(',', '.');
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}

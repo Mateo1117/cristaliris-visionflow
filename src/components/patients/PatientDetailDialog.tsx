@@ -337,7 +337,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
                 <TabsTrigger value="diagnostico">Diagnóstico</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="general" className="space-y-4">
+              <TabsContent value="general" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <div className="rounded-lg bg-muted/50 p-3 text-sm">
                   <p className="font-medium">{paciente.tipo_documento} {paciente.numero_documento} — {paciente.nombres} {paciente.apellidos}</p>
                   {paciente.telefono && <p className="text-xs text-muted-foreground">Tel: {paciente.telefono}</p>}
@@ -353,7 +353,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
                 </div>
               </TabsContent>
 
-              <TabsContent value="agudeza" className="space-y-4">
+              <TabsContent value="agudeza" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card>
                     <CardHeader className="pb-2"><CardTitle className="text-sm">Ojo Derecho (OD)</CardTitle></CardHeader>
@@ -372,7 +372,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
                 </div>
               </TabsContent>
 
-              <TabsContent value="formula" className="space-y-4">
+              <TabsContent value="formula" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card>
                     <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" />OD</CardTitle></CardHeader>
@@ -413,7 +413,7 @@ export function PatientDetailDialog({ paciente, open, onOpenChange, onEdit }: Pr
                 </Card>
               </TabsContent>
 
-              <TabsContent value="diagnostico" className="space-y-4">
+              <TabsContent value="diagnostico" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Diagnóstico</Label><Textarea name="diagnostico" placeholder="Diagnóstico clínico..." rows={3} /></div>
                   <div className="space-y-2"><Label>Código CIE-10</Label><Input name="codigo_cie10" placeholder="Ej: H52.1" /></div>

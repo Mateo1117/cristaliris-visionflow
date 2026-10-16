@@ -5,14 +5,21 @@
  * género, ciudad, empresa); fecha de nacimiento, dirección, ocupación y
  * referido se completan en la consulta y se guardan también en `pacientes`.
  */
+import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { calcularEdad } from './patientUtils';
 import { PREFIJO_PACIENTE as P, type PacienteComplementario } from './pacienteComplementario';
 
-export function DatosPacienteHC({ paciente }: { paciente: PacienteComplementario | null | undefined }) {
+export function DatosPacienteHC({ paciente, onFechaNacimiento }: {
+  paciente: PacienteComplementario | null | undefined;
+  /** Avisa la fecha escrita para mostrar la edad al momento. */
+  onFechaNacimiento?: (fecha: string | null) => void;
+}) {
+  const [fecha, setFecha] = useState<string | null>(null);
+  useEffect(() => { setFecha(null); }, [paciente?.id]);
   if (!paciente) return null;
-  const edad = calcularEdad(paciente.fecha_nacimiento);
+  const edad = calcularEdad(fecha ?? paciente.fecha_nacimiento);
   // `key` por paciente: los inputs no controlados toman de nuevo sus valores al cambiar de paciente.
   return (
     <div key={paciente.id} className="rounded-lg border p-3 space-y-3">
@@ -23,7 +30,8 @@ export function DatosPacienteHC({ paciente }: { paciente: PacienteComplementario
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label className="text-xs">Fecha de nacimiento{edad != null && <span className="text-muted-foreground"> · {edad} años</span>}</Label>
-          <Input type="date" name={`${P}fecha_nacimiento`} defaultValue={paciente.fecha_nacimiento ?? ''} />
+          <Input type="date" name={`${P}fecha_nacimiento`} defaultValue={paciente.fecha_nacimiento ?? ''}
+            onChange={(e) => { setFecha(e.target.value || null); onFechaNacimiento?.(e.target.value || null); }} />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Ocupación</Label>

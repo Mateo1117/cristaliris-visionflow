@@ -78,11 +78,11 @@ export function QualityCheckDialog({ open, onOpenChange, onConfirm, pacienteNomb
             )}
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             {CHECKLIST_ITEMS.map(item => (
               <div
                 key={item.id}
-                className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                className={`flex items-start gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
                   checked[item.id] ? 'bg-success/5 border-success/30' : 'hover:bg-muted/50'
                 }`}
                 onClick={() => handleToggle(item.id)}
@@ -124,7 +124,8 @@ export function QualityCheckDialog({ open, onOpenChange, onConfirm, pacienteNomb
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t">
+          {/* Fijo abajo: con la lista larga el botón quedaba fuera de la pantalla. */}
+          <div className="sticky bottom-0 -mx-6 -mb-6 flex justify-end gap-2 border-t bg-background px-6 py-3">
             <Button variant="outline" onClick={() => handleClose(false)}>Cancelar</Button>
             <Button onClick={handleConfirm} disabled={!allChecked}>
               <ShieldCheck className="h-4 w-4 mr-1" />

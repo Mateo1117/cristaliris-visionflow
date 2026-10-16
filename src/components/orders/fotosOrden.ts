@@ -9,11 +9,14 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface FotoOrden { carpeta: string; name: string; url: string }
 
-const carpetas = (item: { id: string; orden_id?: string | null }) =>
-  [...new Set([item.id, item.orden_id].filter(Boolean) as string[])];
+type ItemFotos = { id: string; orden_id?: string | null; monturas_unidas?: string[] };
+
+// También las carpetas de la montura que va dentro de la tarjeta del lente.
+const carpetas = (item: ItemFotos) =>
+  [...new Set([item.id, item.orden_id, ...(item.monturas_unidas ?? [])].filter(Boolean) as string[])];
 
 /** Número de fotos (para la tarjeta del tablero). */
-export async function contarFotos(item: { id: string; orden_id?: string | null }): Promise<number> {
+export async function contarFotos(item: ItemFotos): Promise<number> {
   let total = 0;
   for (const c of carpetas(item)) {
     const { data } = await supabase.storage.from('orden-fotos').list(c);
@@ -23,7 +26,7 @@ export async function contarFotos(item: { id: string; orden_id?: string | null }
 }
 
 /** Fotos con enlace firmado temporal (el bucket es privado). */
-export async function listarFotos(item: { id: string; orden_id?: string | null }): Promise<FotoOrden[]> {
+export async function listarFotos(item: ItemFotos): Promise<FotoOrden[]> {
   const encontradas: Array<{ carpeta: string; name: string }> = [];
   for (const c of carpetas(item)) {
     const { data, error } = await supabase.storage.from('orden-fotos').list(c);

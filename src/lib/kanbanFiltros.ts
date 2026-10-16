@@ -42,6 +42,43 @@ export function monturasPorOrden(items: ItemKanban[]): Map<string, string[]> {
   return m;
 }
 
+export type ItemUnido<T extends ItemKanban> = T & { montura_orden: string | null; monturas_unidas: string[] };
+
+/**
+ * Una tarjeta por trabajo: la montura que va en la misma etapa que el lente
+ * de su orden se muestra dentro de la tarjeta del lente (viajan juntos y
+ * mover_etapa la mueve con él). Si quedó en otra etapa, sigue con tarjeta
+ * propia para que no se pierda de vista. Una montura sola (sin lente) también.
+ */
+export function unirMonturas<T extends ItemKanban>(items: T[]): ItemUnido<T>[] {
+  const etapaLente = new Map<string, Set<string>>();
+  for (const it of items) {
+    if (it.tipo_producto === 'montura') continue;
+    etapaLente.set(it.orden_id, (etapaLente.get(it.orden_id) ?? new Set()).add(it.estado_actual));
+  }
+  const unidas = new Map<string, T[]>(); // clave: orden|etapa
+  const salida: T[] = [];
+  for (const it of items) {
+    if (it.tipo_producto === 'montura' && etapaLente.get(it.orden_id)?.has(it.estado_actual)) {
+      const k = `${it.orden_id}|${it.estado_actual}`;
+      unidas.set(k, [...(unidas.get(k) ?? []), it]);
+    } else {
+      salida.push(it);
+    }
+  }
+  const yaTiene = new Set<string>(); // solo el primer lente de la orden en esa etapa lleva la montura
+  return salida.map((it) => {
+    const k = `${it.orden_id}|${it.estado_actual}`;
+    const monts = it.tipo_producto !== 'montura' && !yaTiene.has(k) ? (unidas.get(k) ?? []) : [];
+    if (monts.length) yaTiene.add(k);
+    return {
+      ...it,
+      montura_orden: monts.length ? monts.map((m) => textoMontura(m.descripcion)).join(' / ') : null,
+      monturas_unidas: monts.map((m) => m.id),
+    };
+  });
+}
+
 export function filtrarKanban<T extends ItemKanban>(items: T[], f: FiltrosKanban): T[] {
   const q = normalizar(f.texto.trim());
   return items.filter((it) => {
@@ -49,9 +86,11 @@ export function filtrarKanban<T extends ItemKanban>(items: T[], f: FiltrosKanban
       const lab = it.laboratorio_id ?? SIN_LABORATORIO;
       if (lab !== f.laboratorioId) return false;
     }
-    if (f.tipo !== 'todos' && it.tipo_producto !== f.tipo) return false;
+    if (f.tipo === 'lente' && it.tipo_producto === 'montura') return false;
+    // "Monturas": también las que van dentro de la tarjeta del lente.
+    if (f.tipo === 'montura' && it.tipo_producto !== 'montura' && !(it as any).montura_orden) return false;
     if (q) {
-      const texto = normalizar([it.paciente_nombre, it.descripcion, it.numero_montura ?? '', etiquetaOrden(it.numero_orden), String(it.numero_orden ?? ''), it.laboratorio_nombre].join(' '));
+      const texto = normalizar([it.paciente_nombre, it.descripcion, it.numero_montura ?? '', (it as any).montura_orden ?? '', etiquetaOrden(it.numero_orden), String(it.numero_orden ?? ''), it.laboratorio_nombre].join(' '));
       if (!texto.includes(q)) return false;
     }
     return true;

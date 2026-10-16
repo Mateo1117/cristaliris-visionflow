@@ -19,7 +19,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { FlaskConical, Search, Settings2, X } from 'lucide-react';
 import { COLORES_ETAPA, mensajeMovimiento, moverEtapa, nombreCorto, useEtapasKanban } from '@/lib/etapasKanban';
 import { EtapasKanbanDialog } from './EtapasKanbanDialog';
-import { filtrarKanban, monturasPorOrden, resumenLaboratorios, type FiltrosKanban, type TipoFiltro } from '@/lib/kanbanFiltros';
+import { filtrarKanban, resumenLaboratorios, unirMonturas, type FiltrosKanban, type TipoFiltro } from '@/lib/kanbanFiltros';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   diasHabilesEntre,
@@ -208,11 +208,8 @@ export function KanbanBoard() {
     return <div className="text-center py-12 text-muted-foreground">Cargando tablero...</div>;
   }
 
-  const monturas = monturasPorOrden(productos as any);
-  const conMontura = (productos as any[]).map((p) => ({
-    ...p,
-    montura_orden: p.tipo_producto !== 'montura' ? (monturas.get(p.orden_id)?.join(' / ') ?? null) : null,
-  }));
+  // Una tarjeta por trabajo: la montura va dentro de la tarjeta del lente.
+  const conMontura = unirMonturas(productos as any[]) as any[];
   const visibles = filtrarKanban(conMontura, filtros);
   const resumen = resumenLaboratorios(conMontura);
   // Columnas: etapas visibles + las ocultas que todavía tengan trabajos (para que nada desaparezca).

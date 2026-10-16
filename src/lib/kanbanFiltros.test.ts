@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SIN_LABORATORIO, filtrarKanban, monturasPorOrden, resumenLaboratorios, textoMontura, type ItemKanban } from './kanbanFiltros';
+import { SIN_LABORATORIO, filtrarKanban, monturasPorOrden, resumenLaboratorios, textoMontura, unirMonturas, type ItemKanban } from './kanbanFiltros';
 
 const item = (x: Partial<ItemKanban>): ItemKanban => ({
   id: Math.random().toString(), orden_id: 'o1', numero_orden: 11, paciente_nombre: 'Pepito Pérez',
@@ -34,5 +34,28 @@ describe('tablero por laboratorio', () => {
   it('asocia la montura a su orden para mostrarla en la tarjeta del lente', () => {
     expect(monturasPorOrden(items).get('o1')).toEqual(['Ray-Ban RB5154 · Ref. 001']);
     expect(textoMontura('Montura · Montura · Ref. 001')).toBe('Montura · Ref. 001');
+  });
+});
+
+describe('una tarjeta por trabajo', () => {
+  const lente = item({ id: 'L', orden_id: 'o9', estado_actual: 'pedido_creado' });
+  const montura = item({ id: 'M', orden_id: 'o9', tipo_producto: 'montura', descripcion: 'Montura · Tous · Ref. 2969', estado_actual: 'pedido_creado' });
+
+  it('la montura en la misma etapa que el lente va dentro de su tarjeta', () => {
+    const r = unirMonturas([lente, montura]);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ id: 'L', montura_orden: 'Tous · Ref. 2969', monturas_unidas: ['M'] });
+  });
+
+  it('si la montura quedó en otra etapa, o va sola, conserva su tarjeta', () => {
+    expect(unirMonturas([lente, { ...montura, estado_actual: 'enviado_laboratorio' }])).toHaveLength(2);
+    expect(unirMonturas([montura])).toHaveLength(1);
+  });
+
+  it('el filtro "Monturas" incluye los lentes que llevan montura; "Lentes" no muestra monturas sueltas', () => {
+    const r = unirMonturas([lente, montura, item({ id: 'S', orden_id: 'o8', tipo_producto: 'montura', descripcion: 'Montura · Sola' })]);
+    expect(filtrarKanban(r, { laboratorioId: null, tipo: 'montura', texto: '' }).map((x) => x.id)).toEqual(['L', 'S']);
+    expect(filtrarKanban(r, { laboratorioId: null, tipo: 'lente', texto: '' }).map((x) => x.id)).toEqual(['L']);
+    expect(filtrarKanban(r, { laboratorioId: null, tipo: 'todos', texto: 'tous' }).map((x) => x.id)).toEqual(['L']);
   });
 });

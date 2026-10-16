@@ -11,11 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Plus, Clock, ShieldAlert } from 'lucide-react';
-import { useState } from 'react';
+import { Search, Plus, ShieldAlert, Wrench } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { DIAS_ADAPTACION, adaptacionCumplida, diasRestantesAdaptacion } from '@/lib/businessDays';
+import { Switch } from '@/components/ui/switch';
+import { FormulaEditor, aFormula, aTexto, type FormulaTexto } from '@/components/orders/FormulaEditor';
+import { TablaFormula, useFormulaOrden } from '@/components/orders/FormulaOrdenCard';
+import { textoFormulaCompleta, tieneFormula } from '@/components/orders/formulaOrden';
 import { toast } from 'sonner';
 
 const estadoColor: Record<string, string> = {
@@ -43,8 +46,12 @@ export default function Warranties() {
   const [showForm, setShowForm] = useState(false);
   const [selectedProducto, setSelectedProducto] = useState('');
   const [selectedLab, setSelectedLab] = useState('');
-  /** Defecto físico se reporta de inmediato; adaptación exige el periodo de 7 días. */
+  /** Defecto físico (rayado, torcido…) o adaptación (no se adapta a la fórmula o al lente). Sin espera en ninguno. */
   const [tipoGarantia, setTipoGarantia] = useState<'defecto' | 'adaptacion'>('defecto');
+  /** Rehacer el trabajo: ¿cambia la fórmula? y con qué tipo / tiempo de lente. */
+  const [cambiaFormula, setCambiaFormula] = useState(false);
+  const [formulaNueva, setFormulaNueva] = useState<FormulaTexto>(aTexto(null));
+  const [tipoTiempo, setTipoTiempo] = useState('');
   const queryClient = useQueryClient();
 
   const { data: garantias = [], isLoading } = useQuery({
@@ -73,7 +80,7 @@ export default function Warranties() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orden_productos')
-        .select('id, descripcion, tipo_producto, orden_id, fecha_entrega_real, ciclo_garantia, ordenes(pacientes(nombres, apellidos))')
+        .select('id, descripcion, tipo_producto, orden_id, laboratorio_id, tipo_lente_tiempo, fecha_entrega_real, ciclo_garantia, ordenes(paciente_id, pacientes(nombres, apellidos))')
         .eq('estado_actual', 'entregado')
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -136,15 +143,20 @@ export default function Warranties() {
         envio_asumido_por: formData.envio_asumido_por || null,
         guia_envio: formData.guia_envio || null,
         tipo: formData.tipo,
+        formula_nueva: formData.formula_nueva ?? null,
+        tipo_lente_tiempo: formData.tipo_lente_tiempo || null,
       } as any);
       if (error) throw error;
 
       // La garantía recorre de nuevo el flujo de estados, marcada como garantía.
+      // Se rehace con el laboratorio y el tipo de lente elegidos en la garantía.
       const { error: errProducto } = await supabase.from('orden_productos').update({
         estado_actual: 'pedido_creado' as any,
         es_garantia: true,
         ciclo_garantia: ciclo,
         garantia_codigo: subcodigo,
+        ...(formData.laboratorio_id ? { laboratorio_id: formData.laboratorio_id } : {}),
+        ...(formData.tipo_lente_tiempo ? { tipo_lente_tiempo: formData.tipo_lente_tiempo } : {}),
       }).eq('id', formData.orden_producto_id);
       if (errProducto) throw errProducto;
 
@@ -154,7 +166,8 @@ export default function Warranties() {
         estado_anterior: 'entregado' as any,
         estado_nuevo: 'pedido_creado' as any,
         metodo: 'garantia',
-        justificacion: `Garantía ${subcodigo}: ${formData.motivo}`,
+        justificacion: `Garantía ${subcodigo}: ${formData.motivo}`
+          + (formData.formula_nueva ? ` · Nueva fórmula: ${textoFormulaCompleta(formData.formula_nueva)}` : ''),
         usuario_id: user?.id || null,
       });
       if (errEstado) throw errEstado;
@@ -178,10 +191,13 @@ export default function Warranties() {
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['orden-productos-garantia'] });
       queryClient.invalidateQueries({ queryKey: ['db-notificaciones'] });
+      queryClient.invalidateQueries({ queryKey: ['formula-orden'] });
       setShowForm(false);
       setSelectedProducto('');
       setSelectedLab('');
       setTipoGarantia('defecto');
+      setCambiaFormula(false);
+      setTipoTiempo('');
       toast.success(`Garantía ${res.subcodigo} creada exitosamente`);
     },
     onError: (e: any) => toast.error(e.message || 'No se pudo crear la garantía'),
@@ -190,23 +206,15 @@ export default function Warranties() {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedProducto) { toast.error('Seleccione un producto'); return; }
-    // El periodo de adaptación solo aplica a garantías por adaptación; un
-    // defecto físico (lente rayado, montura torcida…) se reporta de inmediato.
-    if (tipoGarantia === 'adaptacion') {
-      if (!fechaEntregaSeleccionada) {
-        toast.error('El producto no tiene fecha de entrega registrada: no se puede validar el periodo de adaptación');
-        return;
-      }
-      if (!adaptacionOk) {
-        toast.error(`Protocolo de adaptación: faltan ${diasRestantes} día(s) para poder solicitar la garantía`);
-        return;
-      }
-    }
+    const nueva = cambiaFormula ? aFormula(formulaNueva) : null;
+    if (cambiaFormula && !tieneFormula(nueva)) { toast.error('Escriba la nueva fórmula (al menos la esfera o el cilindro)'); return; }
     const fd = new FormData(e.currentTarget);
     const data: Record<string, any> = { orden_producto_id: selectedProducto };
     fd.forEach((v, k) => { data[k] = v; });
     data.laboratorio_id = selectedLab || null;
     data.tipo = tipoGarantia;
+    data.formula_nueva = nueva;
+    data.tipo_lente_tiempo = tipoTiempo || null;
     createGarantia.mutate(data);
   };
 
@@ -229,12 +237,20 @@ export default function Warranties() {
 
   const selectedProd: any = productos.find((p: any) => p.id === selectedProducto);
 
-  // Protocolo de adaptación (Módulo 5.1): 7 días calendario desde la entrega.
   const fechaEntregaSeleccionada: string | null = selectedProd?.fecha_entrega_efectiva || null;
-  const diasRestantes = diasRestantesAdaptacion(fechaEntregaSeleccionada);
-  const adaptacionOk = adaptacionCumplida(fechaEntregaSeleccionada);
-  const puedeSolicitar = !!selectedProd && !!fechaEntregaSeleccionada && adaptacionOk;
-  const esAdaptacion = tipoGarantia === 'adaptacion';
+
+  // Fórmula actual del trabajo (historia de la orden, venta directa o garantía anterior).
+  const { data: formulaActual } = useFormulaOrden(selectedProd?.orden_id, selectedProd?.ordenes?.paciente_id, selectedProd?.id);
+  const formulaBase = formulaActual && formulaActual.origen !== 'externa' ? formulaActual.formula : null;
+
+  // Al elegir otro producto: su laboratorio y tipo de lente, y la fórmula actual como punto de partida.
+  useEffect(() => {
+    setSelectedLab(selectedProd?.laboratorio_id ?? '');
+    setTipoTiempo(selectedProd?.tipo_lente_tiempo ?? '');
+  }, [selectedProducto]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setFormulaNueva(aTexto(formulaBase)); }, [selectedProducto, formulaActual]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Por adaptación casi siempre se corrige la fórmula.
+  useEffect(() => { setCambiaFormula(tipoGarantia === 'adaptacion'); }, [tipoGarantia]);
 
   return (
     <AppLayout>
@@ -301,8 +317,8 @@ export default function Warranties() {
       </Card>
 
       {/* Create Warranty Dialog */}
-      <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) { setSelectedProducto(''); setSelectedLab(''); } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={showForm} onOpenChange={(o) => { setShowForm(o); if (!o) { setSelectedProducto(''); setSelectedLab(''); setTipoGarantia('defecto'); } }}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nueva Garantía</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -351,31 +367,11 @@ export default function Warranties() {
                   </label>
                   <label className={`flex items-start gap-2 rounded-md border p-2 text-xs cursor-pointer ${tipoGarantia === 'adaptacion' ? 'border-primary bg-primary/5' : ''}`}>
                     <RadioGroupItem value="adaptacion" className="mt-0.5" />
-                    <span><span className="font-medium block text-sm">Adaptación</span>No se adapta a la fórmula o al lente. Requiere {DIAS_ADAPTACION} días desde la entrega.</span>
+                    <span><span className="font-medium block text-sm">Adaptación</span>No se adapta a la fórmula o al lente. Se rehace con la fórmula corregida.</span>
                   </label>
                 </RadioGroup>
               </div>
 
-              {/* Protocolo de adaptación: 7 días calendario desde la entrega */}
-              {esAdaptacion && selectedProd && !fechaEntregaSeleccionada && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-                  Sin fecha de entrega registrada. No se puede validar el periodo de adaptación de {DIAS_ADAPTACION} días.
-                </div>
-              )}
-              {esAdaptacion && selectedProd && fechaEntregaSeleccionada && !adaptacionOk && (
-                <div className="rounded-md border border-warning/30 bg-warning/10 p-2 text-xs flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-warning shrink-0" />
-                  <span>
-                    <strong>Faltan {diasRestantes} día(s) para fin de adaptación.</strong>{' '}
-                    No se puede solicitar garantía antes de {DIAS_ADAPTACION} días calendario desde la entrega.
-                  </span>
-                </div>
-              )}
-              {esAdaptacion && selectedProd && puedeSolicitar && (
-                <div className="rounded-md border border-success/30 bg-success/10 p-2 text-xs">
-                  Periodo de adaptación cumplido — puede solicitar la garantía.
-                </div>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -383,14 +379,52 @@ export default function Warranties() {
               <Textarea name="motivo" required placeholder="Describe el motivo de la garantía..." rows={3} />
             </div>
 
-            <div className="space-y-2">
-              <Label>Laboratorio</Label>
-              <Select value={selectedLab} onValueChange={setSelectedLab}>
-                <SelectTrigger><SelectValue placeholder="Seleccione laboratorio" /></SelectTrigger>
-                <SelectContent>
-                  {labs.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.nombre}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            {/* Rehacer el trabajo: laboratorio, tipo de lente y fórmula */}
+            <div className="rounded-lg border p-3 space-y-3">
+              <p className="text-sm font-medium flex items-center gap-1.5"><Wrench className="h-4 w-4 text-primary" />Rehacer el trabajo</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Laboratorio</Label>
+                  <Select value={selectedLab} onValueChange={setSelectedLab}>
+                    <SelectTrigger><SelectValue placeholder="Seleccione laboratorio" /></SelectTrigger>
+                    <SelectContent>
+                      {labs.map((l: any) => <SelectItem key={l.id} value={l.id}>{l.nombre}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tipo de lente</Label>
+                  <Select value={tipoTiempo || 'none'} onValueChange={(v) => setTipoTiempo(v === 'none' ? '' : v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
+                      <SelectItem value="progresivo">Progresivo</SelectItem>
+                      <SelectItem value="talla">Talla</SelectItem>
+                      <SelectItem value="sol_formula">Sol con fórmula</SelectItem>
+                      <SelectItem value="terminado">Terminado</SelectItem>
+                      <SelectItem value="montura_3piezas">Montura 3 piezas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <label className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2 cursor-pointer">
+                <span className="text-sm">
+                  <span className="font-medium">Cambia la fórmula</span>
+                  <span className="block text-xs text-muted-foreground">Escriba la fórmula corregida; el laboratorio y la etiqueta la usarán.</span>
+                </span>
+                <Switch checked={cambiaFormula} onCheckedChange={setCambiaFormula} aria-label="Cambia la fórmula" />
+              </label>
+
+              {cambiaFormula ? (
+                <FormulaEditor valor={formulaNueva} onChange={setFormulaNueva} />
+              ) : selectedProd ? (
+                formulaBase
+                  ? <div className="space-y-1"><p className="text-xs text-muted-foreground">Se rehace con la fórmula actual:</p><TablaFormula f={formulaBase} /></div>
+                  : formulaActual?.origen === 'externa'
+                    ? <p className="text-xs whitespace-pre-line text-muted-foreground">Se rehace con la fórmula actual:{'\n'}{formulaActual.texto}</p>
+                    : <p className="text-xs text-muted-foreground">El paciente no tiene fórmula registrada. Active "Cambia la fórmula" para escribirla.</p>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -418,7 +452,7 @@ export default function Warranties() {
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createGarantia.isPending || !selectedProd || (esAdaptacion && !puedeSolicitar)}>
+              <Button type="submit" disabled={createGarantia.isPending || !selectedProd}>
                 {createGarantia.isPending ? 'Creando...' : 'Solicitar Garantía'}
               </Button>
             </div>

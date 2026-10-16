@@ -79,7 +79,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   });
 
   const { data: formulaOrden, isLoading: cargandoFormula } = useFormulaOrden(
-    detalle?.orden_id ?? (item as any)?.orden_id, detalle?.ordenes?.paciente_id ?? (item as any)?.paciente_id,
+    detalle?.orden_id ?? (item as any)?.orden_id, detalle?.ordenes?.paciente_id ?? (item as any)?.paciente_id, item?.id,
   );
 
   /** Valor efectivo de un campo: primero lo guardado, luego la copia inicial. */

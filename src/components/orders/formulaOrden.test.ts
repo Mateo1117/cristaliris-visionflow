@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FORMULA_VACIA, elegirFormula, formulaExterna, leerNumero, textoCorto, textoFormulaCompleta, valorDioptria, type HistoriaFormula } from './formulaOrden';
+import { FORMULA_VACIA, elegirFormula, etiquetaAjuste, formulaExterna, formulaVigente, leerNumero, textoCorto, textoFormulaCompleta, valorDioptria, type HistoriaFormula } from './formulaOrden';
 
 const hc = (x: Partial<HistoriaFormula>): HistoriaFormula => ({
   id: Math.random().toString(), orden_id: null, fecha_consulta: '2026-10-16T10:00:00Z',
@@ -33,16 +33,19 @@ describe('fórmula de la orden', () => {
   });
 });
 
-describe('fórmula de garantía', () => {
+describe('historial de fórmulas', () => {
   const nueva = { ...FORMULA_VACIA, od: { esfera: -2, cilindro: -0.75, eje: 90, adicion: null, altura: 19 }, oi: { esfera: -1.5, cilindro: null, eje: null, adicion: null, altura: 19 }, dp: 63, tipo_lente: 'Monofocal AR' };
+  const original = elegirFormula([hc({ orden_id: 'o1' })], 'o1');
 
-  it('la nueva fórmula de la garantía manda sobre la historia', () => {
-    const r = elegirFormula([hc({ orden_id: 'o1' })], 'o1', null, [{ subcodigo: 'G1', fecha_solicitud: '2026-10-18T10:00:00Z', formula_nueva: nueva }]);
-    expect(r).toMatchObject({ origen: 'garantia', subcodigo: 'G1', formula: { dp: 63 } });
-  });
-
-  it('una garantía sin cambio de fórmula no la reemplaza', () => {
-    expect(elegirFormula([hc({ orden_id: 'o1' })], 'o1', null, [{ subcodigo: 'G1', fecha_solicitud: 'x', formula_nueva: null }])?.origen).toBe('orden');
+  it('la vigente es el ajuste más reciente; sin ajustes, la original', () => {
+    expect(formulaVigente({ original, ajustes: [] })?.od.esfera).toBe(-1.25);
+    const ajustes = [
+      { id: 'b', origen: 'reproceso' as const, referencia: null, formula: nueva, motivo: 'eje', created_at: '2026-10-19' },
+      { id: 'a', origen: 'garantia' as const, referencia: 'G1-ABC', formula: FORMULA_VACIA, motivo: null, created_at: '2026-10-18' },
+    ];
+    expect(formulaVigente({ original, ajustes })?.dp).toBe(63);
+    expect(etiquetaAjuste(ajustes[1])).toBe('Fórmula nueva · garantía G1-ABC');
+    expect(etiquetaAjuste(ajustes[0])).toBe('Fórmula nueva · reproceso en control de calidad');
   });
 
   it('textos y lectura de números escritos', () => {

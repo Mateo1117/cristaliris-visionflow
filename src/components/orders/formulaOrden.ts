@@ -1,9 +1,15 @@
 /**
- * Fórmula que corresponde a una orden, en este orden de prioridad:
- *  1. la nueva fórmula de la última garantía del producto (se rehízo el lente);
- *  2. la de la historia clínica vinculada a esa orden;
- *  3. en una venta directa (sin consulta), la fórmula externa de las observaciones;
- *  4. la última historia del paciente con fórmula.
+ * Fórmulas de un trabajo.
+ *
+ * ORIGINAL, en este orden de prioridad:
+ *  1. la de la historia clínica vinculada a esa orden;
+ *  2. en una venta directa (sin consulta), la fórmula externa de las observaciones;
+ *  3. la última historia del paciente con fórmula.
+ *
+ * AJUSTES (tabla formulas_ajuste): cada vez que el lente se rehace con otra
+ * fórmula, por garantía o por reproceso en control de calidad. La vigente es
+ * el ajuste más reciente o, si no hay, la original. Nada se reemplaza: el
+ * detalle muestra la vigente y el historial completo.
  */
 export interface HistoriaFormula {
   id: string;
@@ -28,13 +34,36 @@ export interface Formula {
   notas?: string | null;
 }
 
-export interface GarantiaFormula { subcodigo: string | null; fecha_solicitud: string; formula_nueva: Formula | null }
+export interface AjusteFormula {
+  id: string;
+  origen: 'garantia' | 'reproceso';
+  referencia: string | null;
+  formula: Formula;
+  motivo: string | null;
+  created_at: string;
+  autor?: string | null;
+}
 
 export type FormulaOrden =
   | { origen: 'orden' | 'ultima'; formula: Formula; fecha: string; autor: string | null }
-  | { origen: 'garantia'; formula: Formula; fecha: string; subcodigo: string | null }
   | { origen: 'externa'; texto: string }
   | null;
+
+export interface FormulasTrabajo {
+  original: FormulaOrden;
+  /** Del más reciente al más antiguo. */
+  ajustes: AjusteFormula[];
+}
+
+/** Fórmula con la que se debe hacer el trabajo ahora. */
+export function formulaVigente(f: FormulasTrabajo | null | undefined): Formula | null {
+  if (!f) return null;
+  if (f.ajustes.length) return f.ajustes[0].formula;
+  return f.original && f.original.origen !== 'externa' ? f.original.formula : null;
+}
+
+export const etiquetaAjuste = (a: AjusteFormula) =>
+  a.origen === 'garantia' ? `Fórmula nueva · garantía${a.referencia ? ` ${a.referencia}` : ''}` : 'Fórmula nueva · reproceso en control de calidad';
 
 export const OJO_VACIO: Ojo = { esfera: null, cilindro: null, eje: null, adicion: null, altura: null };
 export const FORMULA_VACIA: Formula = { od: OJO_VACIO, oi: OJO_VACIO, dp: null, tipo_lente: null, filtros: null, notas: null };
@@ -53,17 +82,12 @@ export function formulaDesdeHistoria(h: HistoriaFormula): Formula {
 export const tieneFormula = (f: Formula | null | undefined) =>
   !!f && [f.od.esfera, f.od.cilindro, f.oi.esfera, f.oi.cilindro].some((v) => v != null);
 
-/**
- * `historias` y `garantias` ordenadas de la más reciente a la más antigua.
- */
+/** Fórmula ORIGINAL del trabajo. `historias` de la más reciente a la más antigua. */
 export function elegirFormula(
   historias: HistoriaFormula[],
   ordenId: string | null | undefined,
   observacionesOrden?: string | null,
-  garantias: GarantiaFormula[] = [],
 ): FormulaOrden {
-  const g = garantias.find((x) => tieneFormula(x.formula_nueva));
-  if (g) return { origen: 'garantia', formula: g.formula_nueva!, fecha: g.fecha_solicitud, subcodigo: g.subcodigo };
   const conFormula = historias.filter((h) => tieneFormula(formulaDesdeHistoria(h)));
   const deLaOrden = ordenId ? conFormula.find((h) => h.orden_id === ordenId) : undefined;
   if (deLaOrden) return { origen: 'orden', formula: formulaDesdeHistoria(deLaOrden), fecha: deLaOrden.fecha_consulta, autor: deLaOrden.optometra_nombre ?? null };

@@ -8,13 +8,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { CheckCircle2, XCircle, Eye, Clock, AlertTriangle, RotateCcw } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { usePermissions } from '@/hooks/usePermissions';
 import { diasHabilesEntre, useFestivos } from '@/lib/businessDays';
 import { moverEtapa } from '@/lib/etapasKanban';
 import { toast } from 'sonner';
+import { Switch } from '@/components/ui/switch';
+import { FormulaOrdenCard, useFormulaOrden } from '@/components/orders/FormulaOrdenCard';
+import { FormulaEditor, aFormula, aTexto, type FormulaTexto } from '@/components/orders/FormulaEditor';
+import { formulaVigente, textoFormulaCompleta, tieneFormula, type Formula } from '@/components/orders/formulaOrden';
 
 /**
  * Estado al que regresa un producto rechazado en control de calidad.
@@ -31,6 +35,12 @@ export default function QualityControl() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<any>(null);
   const [observaciones, setObservaciones] = useState('');
+  /** Rechazo por fórmula: se rehace con la fórmula ajustada (queda en el historial). */
+  const [ajustarFormula, setAjustarFormula] = useState(false);
+  const [formulaNueva, setFormulaNueva] = useState<FormulaTexto>(aTexto(null));
+  const { data: formulas, isLoading: cargandoFormula } = useFormulaOrden(selected?.orden_id, selected?.ordenes?.paciente_id, selected?.id);
+  useEffect(() => { setAjustarFormula(false); }, [selected?.id]);
+  useEffect(() => { setFormulaNueva(aTexto(formulaVigente(formulas))); }, [selected?.id, formulas]); // eslint-disable-line react-hooks/exhaustive-deps
   const { canWrite, isLoading: permisosCargando } = usePermissions();
   const { festivos } = useFestivos();
   const puedeEditar = permisosCargando || canWrite('control-calidad');
@@ -40,7 +50,7 @@ export default function QualityControl() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orden_productos')
-        .select('*, laboratorios(nombre, tiempo_promedio_entrega), ordenes(pacientes(nombres, apellidos, numero_documento))')
+        .select('*, laboratorios(nombre, tiempo_promedio_entrega), ordenes(paciente_id, pacientes(nombres, apellidos, numero_documento))')
         .in('estado_actual', ['recibido_optica', 'control_calidad'])
         .order('updated_at', { ascending: true });
       if (error) throw error;
@@ -49,7 +59,13 @@ export default function QualityControl() {
   });
 
   const updateState = useMutation({
-    mutationFn: async ({ id, newState, obs, reproceso }: { id: string; newState: string; oldState: string; obs: string; reproceso?: boolean }) => {
+    mutationFn: async ({ id, newState, obs, reproceso, formula }: { id: string; newState: string; oldState: string; obs: string; reproceso?: boolean; formula?: Formula | null }) => {
+      if (formula) {
+        const { error } = await (supabase as any).from('formulas_ajuste').insert({
+          orden_producto_id: id, origen: 'reproceso', formula, motivo: obs.replace(/^RECHAZADO EN CONTROL DE CALIDAD \(reproceso interno\): /, ''),
+        });
+        if (error) throw error;
+      }
       // mover_etapa sella fechas, deja historial y marca el reproceso interno
       // cuando se devuelve de control de calidad al laboratorio.
       await moverEtapa({
@@ -65,6 +81,7 @@ export default function QualityControl() {
       queryClient.invalidateQueries({ queryKey: ['qc-productos'] });
       queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
       queryClient.invalidateQueries({ queryKey: ['alertas-produccion-lab'] });
+      queryClient.invalidateQueries({ queryKey: ['formula-orden'] });
       setSelected(null);
       setObservaciones('');
       if (res?.reproceso) {
@@ -96,13 +113,17 @@ export default function QualityControl() {
     if (!selected) return;
     if (!puedeEditar) { toast.error('No tiene permisos para rechazar en control de calidad'); return; }
     if (!observaciones.trim()) { toast.error('Debe ingresar observaciones para rechazar'); return; }
+    const formula = ajustarFormula ? aFormula(formulaNueva) : null;
+    if (ajustarFormula && !tieneFormula(formula)) { toast.error('Escriba la fórmula ajustada (al menos esfera o cilindro)'); return; }
 
     updateState.mutate({
       id: selected.id,
       newState: ESTADO_REPROCESO,
       oldState: selected.estado_actual,
-      obs: `RECHAZADO EN CONTROL DE CALIDAD (reproceso interno): ${observaciones.trim()}`,
+      obs: `RECHAZADO EN CONTROL DE CALIDAD (reproceso interno): ${observaciones.trim()}`
+        + (formula ? ` · Fórmula ajustada: ${textoFormulaCompleta(formula)}` : ''),
       reproceso: true,
+      formula,
     });
   };
 
@@ -185,7 +206,7 @@ export default function QualityControl() {
       )}
 
       <Dialog open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Revisión de Calidad</DialogTitle>
           </DialogHeader>
@@ -200,6 +221,9 @@ export default function QualityControl() {
                 {selected.es_garantia && <Badge variant="outline" className="text-yellow-600">Garantía</Badge>}
                 {selected.es_reproceso && <Badge variant="outline" className="text-red-600">Reproceso</Badge>}
               </div>
+
+              {/* Fórmula con la que se debe verificar el lente (vigente) e historial */}
+              <FormulaOrdenCard formula={formulas} cargando={cargandoFormula} />
 
               {!puedeEditar && (
                 <p className="text-xs text-muted-foreground">
@@ -226,6 +250,16 @@ export default function QualityControl() {
                     <Textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)}
                       placeholder="Ej: Lente con graduación correcta, acabado en buen estado..." rows={3} />
                   </div>
+                  <div className="rounded-md border p-3 space-y-2">
+                    <label className="flex items-center justify-between gap-2 cursor-pointer">
+                      <span className="text-sm">
+                        <span className="font-medium">Ajustar la fórmula</span>
+                        <span className="block text-xs text-muted-foreground">Si se rechaza por fórmula: se rehace con la fórmula corregida y queda en el historial.</span>
+                      </span>
+                      <Switch checked={ajustarFormula} onCheckedChange={setAjustarFormula} aria-label="Ajustar la fórmula" />
+                    </label>
+                    {ajustarFormula && <FormulaEditor valor={formulaNueva} onChange={setFormulaNueva} />}
+                  </div>
                   <div className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground flex gap-2">
                     <RotateCcw className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <span>
@@ -236,9 +270,10 @@ export default function QualityControl() {
                   </div>
                   <div className="flex gap-2">
                     <Button className="flex-1" variant="destructive" onClick={handleReject} disabled={updateState.isPending || !puedeEditar}>
-                      <XCircle className="h-4 w-4 mr-1" />Rechazar
+                      <XCircle className="h-4 w-4 mr-1" />{ajustarFormula ? 'Rechazar y rehacer' : 'Rechazar'}
                     </Button>
-                    <Button className="flex-1" onClick={handleApprove} disabled={updateState.isPending || !puedeEditar}>
+                    <Button className="flex-1" onClick={handleApprove} disabled={updateState.isPending || !puedeEditar || ajustarFormula}
+                      title={ajustarFormula ? 'Con la fórmula ajustada el lente se rehace: use Rechazar' : undefined}>
                       <CheckCircle2 className="h-4 w-4 mr-1" />Aprobar
                     </Button>
                   </div>

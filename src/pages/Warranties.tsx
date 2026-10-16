@@ -18,7 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ui/switch';
 import { FormulaEditor, aFormula, aTexto, type FormulaTexto } from '@/components/orders/FormulaEditor';
 import { TablaFormula, useFormulaOrden } from '@/components/orders/FormulaOrdenCard';
-import { textoFormulaCompleta, tieneFormula } from '@/components/orders/formulaOrden';
+import { formulaVigente, textoFormulaCompleta, tieneFormula } from '@/components/orders/formulaOrden';
 import { toast } from 'sonner';
 
 const estadoColor: Record<string, string> = {
@@ -150,6 +150,15 @@ export default function Warranties() {
       if (error) throw error;
 
       // La garantía recorre de nuevo el flujo de estados, marcada como garantía.
+      // La fórmula nueva se agrega al historial del trabajo (la original no se toca).
+      if (formData.formula_nueva) {
+        const { error: errFormula } = await (supabase as any).from('formulas_ajuste').insert({
+          orden_producto_id: formData.orden_producto_id, origen: 'garantia', referencia: subcodigo,
+          formula: formData.formula_nueva, motivo: formData.motivo,
+        });
+        if (errFormula) throw errFormula;
+      }
+
       // Se rehace con el laboratorio y el tipo de lente elegidos en la garantía.
       const { error: errProducto } = await supabase.from('orden_productos').update({
         estado_actual: 'pedido_creado' as any,
@@ -244,7 +253,9 @@ export default function Warranties() {
 
   // Fórmula actual del trabajo (historia de la orden, venta directa o garantía anterior).
   const { data: formulaActual } = useFormulaOrden(selectedProd?.orden_id, selectedProd?.ordenes?.paciente_id, selectedProd?.id);
-  const formulaBase = formulaActual && formulaActual.origen !== 'externa' ? formulaActual.formula : null;
+  // Punto de partida: la fórmula vigente (último ajuste o la original).
+  const formulaBase = formulaVigente(formulaActual);
+  const externa = formulaActual?.original?.origen === 'externa' ? formulaActual.original.texto : null;
 
   // Al elegir otro producto: su laboratorio y tipo de lente, y la fórmula actual como punto de partida.
   useEffect(() => {
@@ -424,8 +435,8 @@ export default function Warranties() {
               ) : selectedProd ? (
                 formulaBase
                   ? <div className="space-y-1"><p className="text-xs text-muted-foreground">Se rehace con la fórmula actual:</p><TablaFormula f={formulaBase} /></div>
-                  : formulaActual?.origen === 'externa'
-                    ? <p className="text-xs whitespace-pre-line text-muted-foreground">Se rehace con la fórmula actual:{'\n'}{formulaActual.texto}</p>
+                  : externa
+                    ? <p className="text-xs whitespace-pre-line text-muted-foreground">Se rehace con la fórmula actual:{'\n'}{externa}</p>
                     : <p className="text-xs text-muted-foreground">El paciente no tiene fórmula registrada. Active "Cambia la fórmula" para escribirla.</p>
               ) : null}
             </div>

@@ -282,7 +282,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
 
   // La etiqueta lleva la misma fórmula que se ve en el detalle.
-  const buildFormulaText = async (): Promise<string | undefined> => textoEtiqueta(formulaOrden ?? null);
+  const buildFormulaText = async (): Promise<string | undefined> => textoEtiqueta(formulaOrden);
 
   const printLabel = async () => {
     const svg = document.getElementById('qr-print-area');

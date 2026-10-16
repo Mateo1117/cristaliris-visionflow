@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FormulaOrdenCard, textoEtiqueta, useFormulaOrden } from './FormulaOrdenCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -76,6 +77,10 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     },
     enabled: !!item && open,
   });
+
+  const { data: formulaOrden, isLoading: cargandoFormula } = useFormulaOrden(
+    detalle?.orden_id ?? (item as any)?.orden_id, detalle?.ordenes?.paciente_id ?? (item as any)?.paciente_id,
+  );
 
   /** Valor efectivo de un campo: primero lo guardado, luego la copia inicial. */
   const campo = <T,>(deLaBase: T | null | undefined, delItem: T | null | undefined): T | undefined =>
@@ -276,29 +281,8 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
 
   const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
 
-  const fmtNum = (n: number | null | undefined) => {
-    if (n === null || n === undefined) return '';
-    const s = (n >= 0 ? '+' : '') + Number(n).toFixed(2);
-    return s;
-  };
-
-  const buildFormulaText = async (): Promise<string | undefined> => {
-    // El id del paciente sale de la consulta de detalle; el listado no siempre
-    // lo trae, y por eso la fórmula nunca llegaba a la etiqueta.
-    const pacienteId = detalle?.ordenes?.paciente_id ?? (item as any)?.paciente_id;
-    if (!pacienteId) return undefined;
-    const { data } = await supabase
-      .from('historias_clinicas')
-      .select('formula_od_esfera, formula_od_cilindro, formula_od_eje, formula_od_adicion, formula_oi_esfera, formula_oi_cilindro, formula_oi_eje, formula_oi_adicion')
-      .eq('paciente_id', pacienteId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!data) return undefined;
-    const od = `OD ${fmtNum(data.formula_od_esfera)} ${fmtNum(data.formula_od_cilindro)} x${data.formula_od_eje ?? '—'}${data.formula_od_adicion ? ` Add ${fmtNum(data.formula_od_adicion)}` : ''}`.trim();
-    const oi = `OI ${fmtNum(data.formula_oi_esfera)} ${fmtNum(data.formula_oi_cilindro)} x${data.formula_oi_eje ?? '—'}${data.formula_oi_adicion ? ` Add ${fmtNum(data.formula_oi_adicion)}` : ''}`.trim();
-    return `${od} / ${oi}`;
-  };
+  // La etiqueta lleva la misma fórmula que se ve en el detalle.
+  const buildFormulaText = async (): Promise<string | undefined> => textoEtiqueta(formulaOrden ?? null);
 
   const printLabel = async () => {
     const svg = document.getElementById('qr-print-area');
@@ -492,6 +476,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                 </div>
                 <div><span className="text-muted-foreground">Descripción:</span> {item.descripcion}</div>
                 {item.numero_montura && <div><span className="text-muted-foreground"># Montura:</span> {item.numero_montura}</div>}
+                <FormulaOrdenCard formula={formulaOrden} cargando={cargandoFormula} />
                 <div className="flex gap-2 flex-wrap">
                   {item.es_garantia && <Badge variant="outline" className="text-yellow-600">Garantía</Badge>}
                   {item.es_reproceso && <Badge variant="outline" className="text-red-600">Reproceso</Badge>}

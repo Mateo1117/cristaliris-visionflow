@@ -170,7 +170,10 @@ export default function ClinicalRecords() {
   });
 
   const { data: pacienteSeleccionado } = usePacienteSeleccionado(selectedPaciente, 'id, nombres, apellidos, numero_documento, tipo_documento, fecha_nacimiento, ocupacion, direccion, referido_por');
-  const edadSeleccionado = calcularEdad(pacienteSeleccionado?.fecha_nacimiento);
+  // Fecha de nacimiento escrita en la consulta: la edad se actualiza al momento.
+  const [fechaNacimiento, setFechaNacimiento] = useState<string | null>(null);
+  useEffect(() => { setFechaNacimiento(null); }, [selectedPaciente]);
+  const edadSeleccionado = calcularEdad(fechaNacimiento ?? pacienteSeleccionado?.fecha_nacimiento);
 
   const num = (v: any) => (v !== undefined && v !== '' && v !== null ? parseFloat(v) : null);
   const int = (v: any) => (v !== undefined && v !== '' && v !== null ? parseInt(v) : null);
@@ -431,6 +434,8 @@ export default function ClinicalRecords() {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nueva Historia Clínica</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit}>
+            {/* forceMount en cada pestaña: Radix desmonta las pestañas ocultas y lo
+                escrito en ellas se perdía; al guardar solo llegaba la pestaña abierta. */}
             <Tabs defaultValue="general" className="w-full">
               <TabsList className="mb-4 w-full justify-start">
                 <TabsTrigger value="general">General</TabsTrigger>
@@ -439,7 +444,7 @@ export default function ClinicalRecords() {
                 <TabsTrigger value="diagnostico">Diagnóstico</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="general" className="space-y-4">
+              <TabsContent value="general" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="space-y-2 md:col-span-2">
                     <Label>Paciente *</Label>
@@ -447,10 +452,10 @@ export default function ClinicalRecords() {
                   </div>
                   <div className="space-y-2">
                     <Label>Edad</Label>
-                    <Input value={edadSeleccionado != null ? `${edadSeleccionado} años` : ''} placeholder="—" disabled />
+                    <Input value={edadSeleccionado != null ? `${edadSeleccionado} años` : ''} placeholder="Escriba la fecha de nacimiento" readOnly tabIndex={-1} className="bg-muted/50" title="Se calcula con la fecha de nacimiento" />
                   </div>
                 </div>
-                <DatosPacienteHC paciente={pacienteSeleccionado} />
+                <DatosPacienteHC paciente={pacienteSeleccionado} onFechaNacimiento={setFechaNacimiento} />
                 <div className="space-y-2">
                   <Label>Motivo de Consulta / Anamnesis</Label>
                   <Textarea name="anamnesis" placeholder="Describa el motivo de consulta..." rows={3} />
@@ -461,7 +466,7 @@ export default function ClinicalRecords() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="agudeza" className="space-y-4">
+              <TabsContent value="agudeza" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm">AV sin Corrección</CardTitle></CardHeader>
                   <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -513,7 +518,7 @@ export default function ClinicalRecords() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="formula" className="space-y-4">
+              <TabsContent value="formula" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card>
                     <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Eye className="h-4 w-4" />OD — Ojo Derecho</CardTitle></CardHeader>
@@ -567,7 +572,7 @@ export default function ClinicalRecords() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="diagnostico" className="space-y-4">
+              <TabsContent value="diagnostico" forceMount className="space-y-4 data-[state=inactive]:hidden">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2 md:col-span-2">
                     <Label>Diagnóstico</Label>

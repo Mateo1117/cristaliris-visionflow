@@ -242,10 +242,12 @@ describe('TSPL label with QR', () => {
       paciente: 'Juan Pérez',
       descripcion: 'Progresivo OD/OI',
       laboratorio: 'Lab Cristal',
+      numeroOrdenLab: 'M111791',
       numeroMontura: 'M-128',
     });
 
     const text = bytesToString(concatTransfers(transfers));
+    expect(text).toContain('Lab: M111791');
     expect(text).toContain('SIZE 60 mm, 40 mm');
     expect(text).toContain('GAP 2 mm, 0 mm');
     expect(text).toContain('CLS');

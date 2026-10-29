@@ -302,7 +302,7 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
       // Si se está editando, lo escrito aunque todavía no se haya guardado.
       descripcion: (editingOrder && orderEdit.descripcion.trim()) || campo(detalle?.descripcion, item.descripcion),
       laboratorio: campo(detalle?.laboratorios?.nombre, item.laboratorio_nombre),
-      numeroOrdenLab: (editingOrder && orderEdit.numero_orden_laboratorio.trim()) || campo(detalle?.numero_orden_laboratorio, (item as any).numero_orden_laboratorio),
+      numeroOrdenLab: numLab.trim() || (editingOrder && orderEdit.numero_orden_laboratorio.trim()) || campo(detalle?.numero_orden_laboratorio, (item as any).numero_orden_laboratorio),
       // La montura va en la tarjeta del lente: su referencia también sale en la etiqueta.
       numeroMontura: (editingOrder && orderEdit.numero_montura.trim()) || campo(detalle?.numero_montura, item.numero_montura)
         || ((item as any).montura_orden?.match(/Ref\.\s*(\S+)/)?.[1] ?? undefined),
@@ -337,9 +337,10 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
         numero: numeroOrdenLabel || '',
         qrPayload: item.id,
         paciente: item.paciente_nombre,
-        descripcion: item.descripcion,
-        laboratorio: item.laboratorio_nombre,
-        numeroMontura: item.numero_montura || undefined,
+        descripcion: campo(detalle?.descripcion, item.descripcion),
+        laboratorio: campo(detalle?.laboratorios?.nombre, item.laboratorio_nombre),
+        numeroOrdenLab: numLab.trim() || campo(detalle?.numero_orden_laboratorio, (item as any).numero_orden_laboratorio) || undefined,
+        numeroMontura: campo(detalle?.numero_montura, item.numero_montura) || undefined,
       });
       toast.success('Etiqueta enviada a la impresora');
     } catch (e: any) {
@@ -373,6 +374,25 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   };
 
   const tamanos = loadPrintSettings();
+
+  // N° de orden del laboratorio, editable aquí mismo antes de imprimir la etiqueta.
+  const numLabGuardado: string = detalle?.numero_orden_laboratorio ?? (item as any)?.numero_orden_laboratorio ?? '';
+  const [numLab, setNumLab] = useState('');
+  useEffect(() => { setNumLab(numLabGuardado); }, [numLabGuardado, item?.id]);
+  const guardarNumLab = useMutation({
+    mutationFn: async () => {
+      if (!item) return;
+      const { error } = await supabase.from('orden_productos')
+        .update({ numero_orden_laboratorio: numLab.trim() || null }).eq('id', item.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orden-producto-detalle', item?.id] });
+      queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      toast.success('N° de orden del laboratorio guardado');
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
   const [usbConectada, setUsbConectada] = useState(false);
   useEffect(() => {
     if (open) isUsbPrinterConnected().then(setUsbConectada).catch(() => setUsbConectada(false));
@@ -645,6 +665,20 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
                   {item.laboratorio_nombre}{item.numero_montura ? ` · Montura ${item.numero_montura}` : ''}
                 </p>
               </div>
+            </div>
+
+            {/* N° que asigna el laboratorio: sale en la etiqueta ("Lab: …") */}
+            <div className="rounded-lg border p-3 space-y-1.5">
+              <Label className="text-xs">N° de orden del laboratorio</Label>
+              <div className="flex gap-2">
+                <Input value={numLab} onChange={(e) => setNumLab(e.target.value)} placeholder="Ej: M111791" className="h-9" />
+                <Button size="sm" variant="outline" className="h-9"
+                  disabled={guardarNumLab.isPending || numLab.trim() === numLabGuardado.trim()}
+                  onClick={() => guardarNumLab.mutate()}>Guardar</Button>
+              </div>
+              <p className={`text-xs ${numLabGuardado ? 'text-muted-foreground' : 'text-warning'}`}>
+                {numLabGuardado ? 'Sale en la etiqueta como "Lab: …".' : 'Sin número guardado: la etiqueta sale sin la línea "Lab". Escríbalo y guarde antes de imprimir.'}
+              </p>
             </div>
 
             {/* Qué se imprime y en qué tamaño (los tamaños vienen de Configuración → Impresión) */}

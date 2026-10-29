@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   buildDefaultLayout,
   fuenteQueCabe,
+  ajusteTexto,
+  partirEnDos,
   clampLayout,
   elementHeightMm,
   reflowLayout,
@@ -255,5 +257,23 @@ describe('fuenteQueCabe', () => {
   });
   it('no baja de la mitad del tamaño diseñado', () => {
     expect(fuenteQueCabe('x'.repeat(200), 8, 28)).toBe(4);
+  });
+});
+
+describe('ajusteTexto (dos renglones)', () => {
+  it('un texto corto queda en un renglón', () => {
+    expect(ajusteTexto('Lab: M111791', 8, 28).lineas).toEqual(['Lab: M111791']);
+  });
+  it('la descripción larga se parte en dos renglones con letra más grande que en uno', () => {
+    const r = ajusteTexto('Lente Progresivo Inteligente Super HD', 8, 28);
+    expect(r.lineas).toEqual(['Lente Progresivo', 'Inteligente Super HD']);
+    expect(r.fuente).toBeGreaterThan(fuenteQueCabe('Lente Progresivo Inteligente Super HD', 8, 28, false, 0.3));
+    // Cabe en ancho y en el alto de su línea.
+    expect(20 * 0.55 * r.fuente * 0.3528).toBeLessThanOrEqual(28.1);
+    expect(2 * r.fuente * 0.3528 * 1.05).toBeLessThanOrEqual(8 * 0.62 + 0.01);
+  });
+  it('partirEnDos busca el corte más parejo', () => {
+    expect(partirEnDos('Maria Victoria Castiblanco')).toEqual(['Maria Victoria', 'Castiblanco']);
+    expect(partirEnDos('Una')).toBeNull();
   });
 });

@@ -359,3 +359,36 @@ export const fuenteQueCabe = (texto: string, fontSizePt: number, anchoMm: number
   if (anchoTexto <= anchoMm || anchoTexto === 0) return fontSizePt;
   return Math.floor(Math.max(fontSizePt * minimo, fontSizePt * (anchoMm / anchoTexto)) * 10) / 10;
 };
+
+/** Parte un texto en dos renglones por el espacio más cercano a la mitad. */
+export const partirEnDos = (texto: string): [string, string] | null => {
+  const palabras = texto.trim().split(/\s+/);
+  if (palabras.length < 2) return null;
+  let mejor: [string, string] | null = null;
+  for (let i = 1; i < palabras.length; i++) {
+    const a = palabras.slice(0, i).join(' ');
+    const b = palabras.slice(i).join(' ');
+    if (!mejor || Math.max(a.length, b.length) < Math.max(mejor[0].length, mejor[1].length)) mejor = [a, b];
+  }
+  return mejor;
+};
+
+/**
+ * Cómo dibujar un texto en su caja: en un renglón (achicando la letra si
+ * hace falta) o, si así quedaría muy pequeño, en DOS renglones con letra más
+ * grande. Los dos renglones caben en el espacio que el diseño deja a la línea
+ * (≈ 0,62 mm por punto de fuente, el paso entre líneas de buildDefaultLayout).
+ */
+export const ajusteTexto = (
+  texto: string, fontSizePt: number, anchoMm: number, bold = false,
+): { lineas: string[]; fuente: number } => {
+  const unRenglon = fuenteQueCabe(texto, fontSizePt, anchoMm, bold, 0.3);
+  if (unRenglon >= fontSizePt * 0.8) return { lineas: [texto], fuente: unRenglon };
+  const partes = partirEnDos(texto);
+  if (!partes) return { lineas: [texto], fuente: unRenglon };
+  const largo = partes[0].length >= partes[1].length ? partes[0] : partes[1];
+  // Alto: 2 renglones × fuente × 0,3528 mm × 1,05 ≤ 0,62 × fontSizePt.
+  const porAlto = (fontSizePt * 0.62) / (2 * 0.3528 * 1.05);
+  const dos = Math.floor(Math.min(fontSizePt, porAlto, fuenteQueCabe(largo, fontSizePt, anchoMm, bold, 0.3)) * 10) / 10;
+  return dos > unRenglon ? { lineas: partes, fuente: dos } : { lineas: [texto], fuente: unRenglon };
+};

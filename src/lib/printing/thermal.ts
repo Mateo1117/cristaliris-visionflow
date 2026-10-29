@@ -22,6 +22,7 @@ import {
   type LabelField,
   type LabelLayout,
   fuenteQueCabe,
+  ajusteTexto,
 } from './labelLayout';
 import { loadLabelCalibration } from './calibration';
 
@@ -356,17 +357,17 @@ const renderLayoutToHtml = async (
     const raw = fieldValue(el.field, data, el.text);
     if (!raw) continue;
     const texto = (el.prefix || '') + raw;
-    const txt = escapeHtml(texto);
     const align = el.align || 'left';
     const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
-    const alto = Math.max(2, el.fontSize * 0.5);
-    // Se reduce la letra para que quepa completo en vez de cortarlo con "…".
-    const fuente = fuenteQueCabe(texto, el.fontSize, el.wMm, !!el.bold);
+    // Completo: en un renglón con letra más pequeña o, si es largo, en dos renglones.
+    const { lineas, fuente } = ajusteTexto(texto, el.fontSize, el.wMm, !!el.bold);
+    const alto = lineas.length === 2 ? fuente * 0.3528 * 1.05 * 2 : Math.max(2, el.fontSize * 0.5);
+    const html = lineas.map(escapeHtml).join('<br>');
 
     partes.push(
-      `<div class="el txt" style="left:${el.xMm}mm;top:${el.yMm}mm;width:${el.wMm}mm;height:${alto}mm;` +
-      `font-size:${fuente}pt;font-weight:${el.bold ? 700 : 400};justify-content:${justify};">` +
-      `<span>${txt}</span></div>`,
+      `<div class="el txt${lineas.length === 2 ? ' dos' : ''}" style="left:${el.xMm}mm;top:${el.yMm}mm;width:${el.wMm}mm;height:${alto}mm;` +
+      `font-size:${fuente}pt;font-weight:${el.bold ? 700 : 400};justify-content:${justify};text-align:${align};">` +
+      `<span>${html}</span></div>`,
     );
   }
 
@@ -419,13 +420,24 @@ const renderLayoutToCanvas = async (
     const align = el.align || 'left';
     // Se reduce la letra (hasta la mitad) para que quepa completo; solo
     // por debajo de eso se recorta con "…".
-    let fontPt = Math.max(4, el.fontSize);
-    const minPt = fontPt * 0.5;
+    // Mismo criterio que la impresión: uno o dos renglones, completo.
+    const ajuste = ajusteTexto(txt, Math.max(4, el.fontSize), el.wMm, !!el.bold);
+    let fontPt = ajuste.fuente;
+    const minPt = fontPt * 0.7;
     const fijarFuente = () => { ctx.font = `${el.bold ? 'bold ' : ''}${ptToPx(fontPt)}px Helvetica, Arial, sans-serif`; };
     fijarFuente();
-    while (ctx.measureText(txt).width > maxWpx && fontPt > minPt) { fontPt = Math.max(minPt, fontPt - 0.25); fijarFuente(); }
+    // Ajuste fino con la medida real del texto.
+    while (ajuste.lineas.some((l) => ctx.measureText(l).width > maxWpx) && fontPt > minPt) { fontPt = Math.max(minPt, fontPt - 0.25); fijarFuente(); }
     ctx.textBaseline = 'top';
     ctx.textAlign = align as CanvasTextAlign;
+    if (ajuste.lineas.length === 2) {
+      let x2 = el.xMm * pxPerMm;
+      if (align === 'center') x2 += maxWpx / 2;
+      else if (align === 'right') x2 += maxWpx;
+      const paso = ptToPx(fontPt) * 1.05;
+      ajuste.lineas.forEach((l, i) => ctx.fillText(l, x2, el.yMm * pxPerMm + i * paso));
+      continue;
+    }
 
     // Clip con elipsis
     let display = txt;
@@ -611,6 +623,7 @@ const openHtmlPrint = (
     white-space: nowrap;
     max-width: 100%;
   }
+  .el.txt.dos { line-height: 1.05; }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head>

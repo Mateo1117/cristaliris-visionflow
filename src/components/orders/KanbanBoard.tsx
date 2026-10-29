@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { etiquetaEstadoProducto } from '@/types';
 import { KanbanColumn } from './KanbanColumn';
 import { OrderDetailDialog } from './OrderDetailDialog';
@@ -204,6 +204,22 @@ export function KanbanBoard() {
     && pendingRetroceso.oldState === 'control_calidad'
     && esEstadoLaboratorio(pendingRetroceso.newState);
 
+  // El tablero ocupa el alto que queda de la pantalla desde donde empieza.
+  const tableroRef = useRef<HTMLDivElement>(null);
+  const [altoTablero, setAltoTablero] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const medir = () => {
+      const el = tableroRef.current;
+      if (!el) return;
+      // Posición en la página (sin contar lo que ya se haya desplazado).
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setAltoTablero(Math.max(380, window.innerHeight - top - 16));
+    };
+    medir();
+    window.addEventListener('resize', medir);
+    return () => window.removeEventListener('resize', medir);
+  }, [isLoading]);
+
   if (isLoading) {
     return <div className="text-center py-12 text-muted-foreground">Cargando tablero...</div>;
   }
@@ -272,7 +288,9 @@ export function KanbanBoard() {
         )}
       </div>
 
-      <ScrollArea className="w-full">
+      {/* Alto fijo al de la pantalla: la barra horizontal queda siempre a la vista
+          (antes había que bajar hasta el final de la columna más larga). */}
+      <ScrollArea ref={tableroRef} className="w-full" style={{ height: altoTablero }}>
         <div className="flex gap-3 pb-4" style={{ minWidth: `${columnas.length * 260}px` }}>
           {columnas.map(({ key, label }) => {
             const items = visibles.filter((p: any) => p.estado_actual === key);
@@ -292,7 +310,8 @@ export function KanbanBoard() {
             );
           })}
         </div>
-        <ScrollBar orientation="horizontal" />
+        <ScrollBar orientation="horizontal" className="h-3" />
+        <ScrollBar orientation="vertical" />
       </ScrollArea>
       <EtapasKanbanDialog open={configurando} onOpenChange={setConfigurando} etapas={etapas} perfiles={perfiles}
         trabajosPorEtapa={Object.fromEntries([...conTrabajos].map((c) => [c, conMontura.filter((p: any) => p.estado_actual === c).length]))} />

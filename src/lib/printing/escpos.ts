@@ -289,6 +289,8 @@ export interface UsbLabelData {
   paciente?: string;
   descripcion?: string;
   laboratorio?: string;
+  /** N° con el que el laboratorio identifica el trabajo. */
+  numeroOrdenLab?: string;
   numeroMontura?: string;
 }
 
@@ -319,6 +321,9 @@ export const printLabelUSB = async (data: UsbLabelData, forcePicker = false) => 
       : '',
     data.numeroMontura
       ? `TEXT 280,140,"1",0,1,1,"M:${trunc(data.numeroMontura, 18)}"`
+      : '',
+    data.numeroOrdenLab
+      ? `TEXT 280,180,"2",0,1,1,"Lab: ${trunc(data.numeroOrdenLab, 14)}"`
       : '',
     data.laboratorio
       ? `TEXT 280,260,"1",0,1,1,"${trunc(data.laboratorio, 24)}"`

@@ -279,7 +279,9 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
     else { refetchFotos(); toast.success('Foto eliminada'); }
   };
 
-  const numeroOrdenLabel = item?.numero_orden ? `ORD-${String(item.numero_orden).padStart(5, '0')}` : item?.id.slice(0, 8);
+  // El número guardado manda (puede haberse corregido desde aquí mismo).
+  const numeroOrden: number | null | undefined = detalle?.ordenes?.numero_orden ?? item?.numero_orden;
+  const numeroOrdenLabel = numeroOrden ? `ORD-${String(numeroOrden).padStart(5, '0')}` : item?.id.slice(0, 8);
 
   // La etiqueta lleva la misma fórmula que se ve en el detalle.
   const buildFormulaText = async (): Promise<string | undefined> => textoEtiqueta(formulaOrden);
@@ -374,6 +376,27 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
   };
 
   const tamanos = loadPrintSettings();
+
+  // Corregir el número de la orden (administrador), p. ej. para cuadrar con el sistema anterior.
+  const [nuevoNumero, setNuevoNumero] = useState<string | null>(null);
+  const cambiarNumero = useMutation({
+    mutationFn: async () => {
+      const n = parseInt(nuevoNumero ?? '', 10);
+      if (!Number.isFinite(n)) throw new Error('Escriba un número');
+      const ordenId = detalle?.orden_id ?? (item as any)?.orden_id;
+      const { error } = await (supabase.rpc as any)('cambiar_numero_orden', { p_orden_id: ordenId, p_numero: n });
+      if (error) throw error;
+      return n;
+    },
+    onSuccess: (n) => {
+      queryClient.invalidateQueries({ queryKey: ['orden-producto-detalle', item?.id] });
+      queryClient.invalidateQueries({ queryKey: ['orden-productos'] });
+      queryClient.invalidateQueries({ queryKey: ['numeracion-ordenes'] });
+      setNuevoNumero(null);
+      toast.success(`Número de orden cambiado a ORD-${String(n).padStart(5, '0')}`);
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   // N° de orden del laboratorio, editable aquí mismo antes de imprimir la etiqueta.
   const numLabGuardado: string = detalle?.numero_orden_laboratorio ?? (item as any)?.numero_orden_laboratorio ?? '';
@@ -493,6 +516,27 @@ export function OrderDetailDialog({ item, open, onOpenChange }: Props) {
           <TabsContent value="detalle" className="space-y-3 text-sm">
             {!editingOrder ? (
               <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-muted-foreground">N° de orden:</span>
+                  {nuevoNumero === null ? (
+                    <>
+                      <span className="font-semibold">{numeroOrdenLabel}</span>
+                      {isAdmin && (
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setNuevoNumero(String(numeroOrden ?? ''))}>
+                          <Pencil className="h-3 w-3 mr-1" />Cambiar
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">ORD-</span>
+                      <Input type="number" min={1} className="h-8 w-28" autoFocus value={nuevoNumero} onChange={(e) => setNuevoNumero(e.target.value)} aria-label="Nuevo número de orden" />
+                      <Button size="sm" className="h-8" onClick={() => cambiarNumero.mutate()} disabled={cambiarNumero.isPending}>Guardar</Button>
+                      <Button size="sm" variant="ghost" className="h-8" onClick={() => setNuevoNumero(null)}>Cancelar</Button>
+                      <span className="w-full text-xs text-muted-foreground">Cambia el número de toda la orden (lente y montura). Imprima de nuevo la etiqueta.</span>
+                    </>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div><span className="text-muted-foreground">Producto:</span> {item.tipo_producto}</div>
                   <div><span className="text-muted-foreground">Lab:</span> {item.laboratorio_nombre}</div>

@@ -43,6 +43,7 @@ import {
   type LabelCalibration,
 } from '@/lib/printing/calibration';
 
+import { NumeracionOrdenes } from '@/components/settings/NumeracionOrdenes';
 import { EmpresaDialog, type Empresa } from '@/components/patients/EmpresaDialog';
 
 type Tabla = 'sedes' | 'laboratorios' | 'empresas';
@@ -189,9 +190,14 @@ export default function SettingsPage() {
           <TabsTrigger value="sedes">Sedes</TabsTrigger>
           <TabsTrigger value="laboratorios">Laboratorios</TabsTrigger>
           <TabsTrigger value="empresas">Empresas</TabsTrigger>
+          <TabsTrigger value="numeracion">Numeración</TabsTrigger>
           <TabsTrigger value="festivos"><CalendarDays className="h-4 w-4 mr-1" />Festivos</TabsTrigger>
           <TabsTrigger value="impresion"><Printer className="h-4 w-4 mr-1" />Impresión</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="numeracion">
+          <NumeracionOrdenes />
+        </TabsContent>
 
         <TabsContent value="festivos">
           <FestivosManager />
